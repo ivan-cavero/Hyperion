@@ -37,6 +37,7 @@ Preparar el terreno: decisiones, toolchain, CI, esqueleto del workspace.
 El corazón del proyecto: hablar el protocolo de Minecraft con seguridad.
 
 - [x] **Handshake + status (ping)**: responder al server list del cliente
+- [x] **Servidor TCP + status en vivo**: listener tokio en 25565, máquina de estados Handshake→Status; un cliente vanilla 26.x ve el server list y el ping responde
 - [ ] **Login completo**: RSA-1024 handshake, AES/CFB8, compresión zlib
 - [ ] **Play**: paquetes básicos (join game, keep-alive, chat, position)
 - [ ] **Codec de paquetes generado** por codegen desde JSON extraído (registries + protocolo)
