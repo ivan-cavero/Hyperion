@@ -8,5 +8,6 @@ repository.workspace = true
 description = "Hyperion: codec de paquetes, NBT propio, multi-versión"
 
 [dependencies]
-# Fase 1: se añadirán de la lista blanca:
-#   bytes, flate2, sha1, sha2, aes, rsa, serde, serde_json, uuid, thiserror, tracing
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

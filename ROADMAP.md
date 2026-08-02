@@ -36,13 +36,13 @@ Preparar el terreno: decisiones, toolchain, CI, esqueleto del workspace.
 
 El corazón del proyecto: hablar el protocolo de Minecraft con seguridad.
 
-- [ ] **Handshake + status (ping)**: responder al server list del cliente
+- [x] **Handshake + status (ping)**: responder al server list del cliente
 - [ ] **Login completo**: RSA-1024 handshake, AES/CFB8, compresión zlib
 - [ ] **Play**: paquetes básicos (join game, keep-alive, chat, position)
 - [ ] **Codec de paquetes generado** por codegen desde JSON extraído (registries + protocolo)
 - [ ] **NBT propio** (lectura/escritura, streaming, sin dependencias)
-- [ ] **Fuzzing**: corpus de paquetes para cada estado (handshake/login/play) — `cargo-fuzz`
-- [ ] **Unit tests** de todos los codecs (round-trip byte→struct→byte)
+- [🔄] **Fuzzing**: corpus de paquetes para cada estado (handshake/login/play) — `cargo-fuzz` (frame/handshake/status ya en CI)
+- [🔄] **Unit tests** de todos los codecs (round-trip byte→struct→byte) (frame/handshake/status cubiertos)
 - [ ] Herramienta `tools/packet_inspector` para depurar tráfico real contra un cliente vanilla
 
 **Criterio de salida**: un cliente vanilla 26.x entra al servidor, ve el mundo vacío, chatea y se mueve, con fuzzing verde en CI.

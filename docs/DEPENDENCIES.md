@@ -24,6 +24,7 @@
 | `uuid` | IDs de jugador/entidad | MIT/Apache-2.0 | uuid-rs | ✅ activo | Fase 1 |
 | `thiserror` | Errores ergonómicos | MIT/Apache-2.0 | dtolnay | ✅ activo | Fase 1 |
 | `tracing` | Logging estructurado | MIT | Tokio team | ✅ activo | Fase 1 |
+| `libfuzzer-sys` | Motor de fuzzing libFuzzer, solo en `crates/hyperion_protocol/fuzz/` | Apache-2.0/MIT | Rust Fuzz project | ✅ activo | Fase 1 |
 | `rayon` | Paralelismo de datos | MIT/Apache-2.0 | Rayon team | ✅ activo | Fase 3 |
 | `crossbeam` | Utilidades de concurrencia | MIT/Apache-2.0 | Crossbeam team | ✅ activo | Fase 3 |
 | `parking_lot` | Locks más rápidos | MIT/Apache-2.0 | Amanieu | ✅ activo | Fase 3 |
