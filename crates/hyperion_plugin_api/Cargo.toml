@@ -1,0 +1,11 @@
+[package]
+name = "hyperion_plugin_api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Hyperion: ABI de plugins WASM/WIT, eventos, comandos, scripting"
+
+[dependencies]
+# Fase 4: se añadirán de la lista blanca (wasmtime, mlua).

@@ -1,0 +1,20 @@
+# Rust
+/target
+**/*.rs.bk
+
+# Build tooling
+Cargo.lock.orig
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs / runtime
+*.log
+server.properties
+world/

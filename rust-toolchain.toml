@@ -1,0 +1,7 @@
+[toolchain]
+# Reproducible toolchain for all contributors and CI.
+# NOTE: "stable" is intentional. Pin an exact version only if a release
+# introduces a regression that breaks the build.
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

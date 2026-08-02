@@ -1,0 +1,16 @@
+[package]
+name = "hyperion_server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Hyperion: binario del servidor (red, arranque, wiring)"
+
+[[bin]]
+name = "hyperion-server"
+path = "src/main.rs"
+
+[dependencies]
+# Fase 1: tokio y el resto de la lista blanca de red.
+hyperion_core = { path = "../hyperion_core" }

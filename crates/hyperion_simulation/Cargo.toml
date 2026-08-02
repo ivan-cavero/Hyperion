@@ -1,0 +1,12 @@
+[package]
+name = "hyperion_simulation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Hyperion: ticking por regiones, ECS, entidades"
+
+[dependencies]
+# Fase 3: se añadirán de la lista blanca (rayon, crossbeam, parking_lot, dashmap)
+# + decisión abierta: bevy_ecs vs ECS propio.

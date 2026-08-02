@@ -1,0 +1,19 @@
+# Configuration for cargo-deny (license/bans/advisories checks in CI).
+# Policy: docs/DEPENDENCIES.md — only permissive, well-maintained crates.
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+
+[advisories]
+yanked = "deny"

@@ -1,0 +1,61 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/hyperion-mc/hyperion"
+readme = "README.md"
+authors = ["Hyperion contributors"]
+description = "Hyperion — a native, multithreaded Minecraft server written in Rust."
+categories = ["network-programming", "game-engines"]
+keywords = ["minecraft", "server", "multithreading", "game", "networking"]
+
+# ─────────────────────────────────────────────────────────────
+#  WHITELIST DEPENDENCIES
+#  Only audited crates may be added (see docs/DEPENDENCIES.md).
+#  Rule: no new dependency without an audit PR. Everything that is
+#  Minecraft-specific (protocol, NBT, worldgen, world formats,
+#  simulation, plugin ABI) is implemented here, with no third-party.
+# ─────────────────────────────────────────────────────────────
+
+[workspace.dependencies]
+# Phase 1 (network/protocol):
+tokio = { version = "1", features = ["full"] }        # async runtime (Tokio team)
+bytes = "1"                                           # buffers (Tokio team)
+flate2 = "1"                                          # zlib/deflate
+sha1 = "0.10"                                         # handshake (RustCrypto)
+sha2 = "0.10"                                         # (RustCrypto)
+aes = "0.8"                                           # encryption (RustCrypto)
+rsa = "0.9"                                           # RSA handshake (RustCrypto)
+serde = { version = "1", features = ["derive"] }      # extracted data
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+thiserror = "2"
+tracing = "0.1"
+
+# Phase 3 (simulation):
+rayon = "1"                                           # data parallelism
+crossbeam = "0.8"                                     # concurrency utilities
+parking_lot = "0.12"                                  # faster locks
+dashmap = "6"                                         # concurrent maps
+
+# Phase 4 (plugins):
+wasmtime = "30"        # WASM runtime — exact version pinned in Phase 4
+mlua = { version = "0.10", features = ["lua54"] }     # Lua scripting
+
+# Open decision (Phase 3): bevy_ecs vs a custom minimal ECS.
+# bevy_ecs = "0.14"
+
+# Release profile: build for throughput from day one.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+# Dev profile: keep local iteration fast but usable.
+[profile.dev]
+opt-level = 1
