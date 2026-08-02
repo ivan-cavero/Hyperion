@@ -1,0 +1,12 @@
+[package]
+name = "hyperion_compat"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Hyperion: experimental Java plugin compatibility layer (TeaVM/WASM, plan B: embedded JVM)"
+
+[dependencies]
+# Research-only crate (ADR 0006, docs/COMPATIBILITY.md). NEVER wired into hot paths.
+# Phase 4.5: host-import stubs for the Bukkit API subset + wasmtime integration.

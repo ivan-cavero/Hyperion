@@ -21,7 +21,7 @@
 
 Preparar el terreno: decisiones, toolchain, CI, esqueleto del workspace.
 
-- [x] Nombre (Hyperion), licencia MIT y branding básico — **repo público: pendiente de crear en GitHub**
+- [x] Nombre (Hyperion), licencia MIT y branding básico — **repo público: creado y push realizado: https://github.com/ivan-cavero/Hyperion**
 - [x] Workspace Cargo con los 6 crates (`hyperion_core`, `hyperion_protocol`, `hyperion_world`, `hyperion_simulation`, `hyperion_plugin_api`, `hyperion_server`)
 - [x] Toolchain Rust estable fijada (`rust-toolchain.toml`) + `rustfmt.toml` + `.editorconfig` + `.gitattributes` (LF)
 - [x] CI completo: `cargo build` · `cargo test` · `cargo clippy -D warnings` · `cargo fmt --check` + **cargo-audit** (seguridad) + **cargo-deny** (licencias) + dependabot — fuzz se añade en Fase 1
@@ -99,6 +99,21 @@ El diferenciador: plugins seguros y simples.
 - [ ] Hot-reload seguro de plugins (sin `dlopen` — WASM se descarga limpiamente)
 
 **Criterio de salida**: un plugin WASM de ejemplo (comando + evento + scheduler) funciona de extremo a extremo, documentado en la landing.
+
+---
+
+## FASE 4.5 — Compatibilidad Java (investigación, NO prioritaria) · ⬜
+
+Evaluar retrocompatibilidad con plugins Bukkit/Spigot/Paper sin comprometer el
+núcleo. Estrategia completa: docs/COMPATIBILITY.md · ADR 0006.
+
+- [ ] **PoC Vía C (TeaVM → WASM)**: compilar un plugin mínimo (JavaPlugin + onEnable + 1 comando) a WASM con TeaVM
+- [ ] **PoC host imports**: exponer subconjunto de la API Bukkit (Player.send_message, command dispatch, permisos) como imports WASM del host
+- [ ] **PoC ejecución**: plugin corriendo en wasmtime sobre Hyperion (subconjunto API)
+- [ ] **Criterio go/no-go**: si features que TeaVM no soporta (reflection, threads, class-loading) bloquean >X% de plugins objetivo → degradar a Vía B
+- [ ] **Plan B (Vía B)**: PoC JVM embebida (`jni-rs`) + subconjunto API Bukkit en Rust (precedente de coste: Cardboard)
+
+**Criterio de salida**: decisión go/no-go documentada con evidencia; PoC funcional (Vía C o B) o decisión de abandonar. No bloquea el roadmap principal.
 
 ---
 

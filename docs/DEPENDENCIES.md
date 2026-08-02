@@ -48,7 +48,7 @@
 
 | Crate | Por qué NO |
 |---|---|
-| `jni-rs` / puentes JVM | Hyperion no embebe Java; la compat con plugins Java (bytecode) está descartada por diseño — ver README |
+| `jni-rs` / puentes JVM | Excluido del NUCLEO (ADR 0003). Opcional SOLO dentro de `hyperion_compat` (Vía B, ADR 0006) |
 | `libloading` / `dlopen` | Plugins nativos = código arbitrario sin sandbox; además no se descargan en Windows. WASM resuelve el problema |
 | Crates de terceros de "minecraft server" (valence, etc.) | Hyperion es un proyecto desde cero: aprender y controlar todo. Solo se estudian como referencia |
 
@@ -68,3 +68,14 @@
 - **Es la dirección que está tomando el ecosistema nativo** (Pumpkin migra de libloading a WIT/WASM).
 
 *Última auditoría: 2026-08-02 · Próxima: al inicio de cada fase del ROADMAP.*
+## Herramientas externas de compatibilidad (NO crates de runtime)
+
+Auditadas aparte, usadas solo en el pipeline de `hyperion_compat` (ADR 0006):
+
+| Herramienta | Uso | Licencia | Estado |
+|---|---|---|---|
+| **TeaVM** | Compilar plugins Java (bytecode) → WebAssembly (Vía C) | Apache-2.0 | 3k★, activo — investigación Fase 4.5 |
+| **JDK** (toolchain) | Compilar plugins de prueba / jar de la API Bukkit | GPLv2+CE / OpenJDK | Toolchain de desarrollo, no runtime |
+
+Estas herramientas NO entran en la lista blanca de crates del runtime y no
+pueden usarse en el núcleo de Hyperion.

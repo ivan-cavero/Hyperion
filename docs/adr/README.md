@@ -10,6 +10,7 @@ Convención: `NNNN-nombre.md`. Estado: **Aceptada**, **Propuesta** (abierta),
 |-----|--------|--------|
 | 0001 | Fuente del worldgen (1:1 vanilla) | **Propuesta** — decisión pendiente, límite Fase 2 |
 | 0002 | Runtime de plugins: WASM/WIT (wasmtime) | Aceptada |
-| 0003 | Sin puente JVM (no embeder Java) | Aceptada |
+| 0003 | Sin puente JVM (no embeder Java) | Aceptada (núcleo) — ampliada por 0006 |
 | 0004 | Ticking por regiones multihilo | Aceptada |
 | 0005 | Pipeline datos → codegen para el protocolo | Aceptada |
+| 0006 | Compatibilidad con plugins Java: TeaVM → JVM | Aceptada (estratégica) |

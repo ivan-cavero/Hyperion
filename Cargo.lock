@@ -3,6 +3,10 @@
 version = 4
 
 [[package]]
+name = "hyperion_compat"
+version = "0.1.0"
+
+[[package]]
 name = "hyperion_core"
 version = "0.1.0"
 

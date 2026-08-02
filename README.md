@@ -31,8 +31,8 @@ Hyperion es un servidor de Minecraft **Java Edition** escrito **desde cero en Ru
 
 ## No objetivos (v1) — decisiones deliberadas
 
-- ❌ **Compatibilidad con plugins Bukkit/Spigot/Paper**: son bytecode Java; ejecutarlos exige una JVM y reimplementar la API completa. Descartado por diseño (ver [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md)).
-- ❌ **Compatibilidad con mods Forge/Fabric**: usan *mixins* sobre el código Java de Mojang; es imposible en un servidor no-Java sin reimplementarlos a mano.
+- **Compatibilidad con plugins Bukkit/Spigot/Paper**: no en v1; en investigación como capa OPT-IN de menor rendimiento (Vía C: TeaVM→WASM; plan B: JVM embebida). Ver [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)
+- **Mods Forge/Fabric/NeoForge**: client-side gratuito (los carga el cliente); server-side solo vía portes manuales a la API nativa. Expectativa realista: los mods pesados no corren en el núcleo nativo. Ver [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)
 - ❌ **"Miles de jugadores en un solo proceso con simulación completa"**: ningún servidor (ni Java ni nativo) lo ha sostenido en producción. El escalado horizontal (proxy + múltiples regiones/procesos) se abordará en fases posteriores.
 
 ---
