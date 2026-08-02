@@ -112,8 +112,8 @@ pub fn encode_pong_response(payload: i64) -> Result<Vec<u8>, ProtocolError> {
     encode_frame(PONG_RESPONSE_PACKET_ID, &payload.to_be_bytes())
 }
 
-/// Encode a clientbound Status Response frame containing bounded JSON.
-pub fn encode_status_response(response: &StatusResponse) -> Result<Vec<u8>, ProtocolError> {
+/// Codifica el payload de una Status Response: el String JSON acotado.
+pub fn encode_status_response_payload(response: &StatusResponse) -> Result<Vec<u8>, ProtocolError> {
     let maximum_json_bytes = MAX_STATUS_RESPONSE_UTF16_UNITS
         .checked_mul(3)
         .ok_or(ProtocolError::StringTooLong)?;
@@ -125,9 +125,14 @@ pub fn encode_status_response(response: &StatusResponse) -> Result<Vec<u8>, Prot
     let response_json = String::from_utf8(writer.into_inner())
         .map_err(|error| ProtocolError::JsonSerialization(error.to_string()))?;
 
+    encode_string(&response_json, MAX_STATUS_RESPONSE_UTF16_UNITS)
+}
+
+/// Encode a clientbound Status Response frame containing bounded JSON.
+pub fn encode_status_response(response: &StatusResponse) -> Result<Vec<u8>, ProtocolError> {
     encode_frame(
         STATUS_RESPONSE_PACKET_ID,
-        &encode_string(&response_json, MAX_STATUS_RESPONSE_UTF16_UNITS)?,
+        &encode_status_response_payload(response)?,
     )
 }
 

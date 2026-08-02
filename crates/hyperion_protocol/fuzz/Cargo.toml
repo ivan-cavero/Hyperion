@@ -35,3 +35,10 @@ path = "fuzz_targets/status.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "login"
+path = "fuzz_targets/login.rs"
+test = false
+doc = false
+bench = false

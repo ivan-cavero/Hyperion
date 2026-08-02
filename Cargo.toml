@@ -31,6 +31,7 @@ sha1 = "0.10"                                         # handshake (RustCrypto)
 sha2 = "0.10"                                         # (RustCrypto)
 aes = "0.8"                                           # encryption (RustCrypto)
 rsa = "0.9"                                           # RSA handshake (RustCrypto)
+rand = "0.8"                                          # RNG para keypair RSA (Rust Random)
 serde = { version = "1", features = ["derive"] }      # extracted data
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }

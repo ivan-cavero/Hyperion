@@ -20,6 +20,7 @@
 | `bytes` | Buffers de red | MIT | Tokio team | ✅ activo | Fase 1 |
 | `flate2` / `miniz_oxide` | Compresión zlib | MIT/Apache-2.0 | Alex Crichton | ✅ activo | Fase 1 |
 | `sha1`, `sha2`, `aes`, `rsa` | Cripto handshake | Apache-2.0/MIT | RustCrypto | ✅ activo | Fase 1 |
+| `rand` | RNG para generación de claves RSA | MIT/Apache-2.0 | Rust Random project | ✅ activo | Fase 1 |
 | `serde` + `serde_json` | Datos extraídos | MIT/Apache-2.0 | Serde team | ✅ activo | Fase 1 |
 | `uuid` | IDs de jugador/entidad | MIT/Apache-2.0 | uuid-rs | ✅ activo | Fase 1 |
 | `thiserror` | Errores ergonómicos | MIT/Apache-2.0 | dtolnay | ✅ activo | Fase 1 |

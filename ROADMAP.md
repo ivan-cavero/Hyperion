@@ -38,12 +38,12 @@ El corazón del proyecto: hablar el protocolo de Minecraft con seguridad.
 
 - [x] **Handshake + status (ping)**: responder al server list del cliente
 - [x] **Servidor TCP + status en vivo**: listener tokio en 25565, máquina de estados Handshake→Status; un cliente vanilla 26.x ve el server list y el ping responde
-- [ ] **Login completo**: RSA-1024 handshake, AES/CFB8, compresión zlib
+- [🔄] **Login completo**: RSA-1024 handshake, AES/CFB8, compresión zlib (login offline en vivo + crypto/compresión probados; online-mode pendiente de la session server)
 - [ ] **Play**: paquetes básicos (join game, keep-alive, chat, position)
 - [ ] **Codec de paquetes generado** por codegen desde JSON extraído (registries + protocolo)
 - [ ] **NBT propio** (lectura/escritura, streaming, sin dependencias)
-- [🔄] **Fuzzing**: corpus de paquetes para cada estado (handshake/login/play) — `cargo-fuzz` (frame/handshake/status ya en CI)
-- [🔄] **Unit tests** de todos los codecs (round-trip byte→struct→byte) (frame/handshake/status cubiertos)
+- [🔄] **Fuzzing**: corpus de paquetes para cada estado (handshake/login/play) — `cargo-fuzz` (frame/handshake/status/login ya en CI)
+- [🔄] **Unit tests** de todos los codecs (round-trip byte→struct→byte) (frame/handshake/status/login cubiertos)
 - [ ] Herramienta `tools/packet_inspector` para depurar tráfico real contra un cliente vanilla
 
 **Criterio de salida**: un cliente vanilla 26.x entra al servidor, ve el mundo vacío, chatea y se mueve, con fuzzing verde en CI.

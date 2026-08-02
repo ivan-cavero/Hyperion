@@ -17,3 +17,4 @@ hyperion_core = { path = "../hyperion_core" }
 hyperion_protocol = { path = "../hyperion_protocol" }
 tokio = { workspace = true }
 bytes = { workspace = true }
+uuid = { workspace = true }

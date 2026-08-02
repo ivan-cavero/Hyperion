@@ -33,4 +33,10 @@ pub enum ProtocolError {
     /// Serializing a Status Response failed.
     #[error("could not serialize Status Response JSON: {0}")]
     JsonSerialization(String),
+    /// An RSA or session-cipher operation failed.
+    #[error("crypto operation failed: {0}")]
+    Crypto(String),
+    /// Decompressing a compressed packet failed.
+    #[error("could not decompress packet: {0}")]
+    Compression(String),
 }
