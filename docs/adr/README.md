@@ -14,3 +14,4 @@ Convención: `NNNN-nombre.md`. Estado: **Aceptada**, **Propuesta** (abierta),
 | 0004 | Ticking por regiones multihilo | Aceptada |
 | 0005 | Pipeline datos → codegen para el protocolo | Aceptada |
 | 0006 | Compatibilidad con plugins Java: TeaVM → JVM | Aceptada (estratégica) |
+| 0007 | Estrategia de versiones: 26.2 primero, multi-versión después | Aceptada |
