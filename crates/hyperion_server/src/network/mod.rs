@@ -15,9 +15,11 @@ mod status;
 
 use std::io;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use hyperion_protocol::{HandshakeIntent, decode_handshake};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Semaphore;
 use tracing::{debug, error, info, warn};
 
 pub use self::connection::ConnectionError;
@@ -53,11 +55,33 @@ pub async fn serve(config: ServerConfig) -> io::Result<()> {
         "server listening"
     );
 
+    serve_with_listener(listener, config, key_pool).await
+}
+
+/// Accept loop with a connection cap, dispatches each connection to its
+/// own task. Separate from [`serve`] so tests can hand over their own
+/// bound listener.
+///
+/// An anti-DoS backpressure: at most `config.max_connections` tasks run
+/// concurrently. The permit is acquired *before* `accept`, so excess
+/// clients wait in the OS backlog instead of piling up tasks, sockets and
+/// memory; each permit is held until its connection task ends.
+pub async fn serve_with_listener(
+    listener: TcpListener,
+    config: ServerConfig,
+    key_pool: KeyPool,
+) -> io::Result<()> {
+    let connection_slots = Arc::new(Semaphore::new(config.max_connections));
     loop {
+        let permit = connection_slots.clone().acquire_owned().await.map_err(|_| {
+            io::Error::other("connection semaphore closed")
+        })?;
         let (stream, peer_address) = listener.accept().await?;
         let config = config.clone();
         let key_pool = key_pool.clone();
         tokio::spawn(async move {
+            // Held until the connection task ends.
+            let _permit = permit;
             // Every failure is logged with stage context by
             // `handle_connection`; this line only marks task completion.
             match handle_connection(stream, peer_address, config, &key_pool).await {
