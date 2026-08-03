@@ -12,7 +12,7 @@
 4. **Minimizar dependencias transitivas**: preferir crates del mismo ecosistema mantenido.
 5. **Preferir zero-dependency** para todo lo específico de Minecraft.
 
-## Lista blanca (verificada 2026-08-02)
+## Lista blanca (verificada 2026-08-03)
 
 | Crate | Propósito | Licencia | Mantenido por | Estado | Se añade en |
 |---|---|---|---|---|---|
@@ -20,11 +20,15 @@
 | `bytes` | Buffers de red | MIT | Tokio team | ✅ activo | Fase 1 |
 | `flate2` / `miniz_oxide` | Compresión zlib | MIT/Apache-2.0 | Alex Crichton | ✅ activo | Fase 1 |
 | `sha1`, `sha2`, `aes`, `rsa` | Cripto handshake | Apache-2.0/MIT | RustCrypto | ✅ activo | Fase 1 |
+| `md5` | UUID offline v3 (paridad vanilla `OfflinePlayer:<name>`) | MIT/Apache-2.0 | RustCrypto | ✅ activo | Fase 1 |
 | `rand` | RNG para generación de claves RSA | MIT/Apache-2.0 | Rust Random project | ✅ activo | Fase 1 |
 | `serde` + `serde_json` | Datos extraídos | MIT/Apache-2.0 | Serde team | ✅ activo | Fase 1 |
 | `uuid` | IDs de jugador/entidad | MIT/Apache-2.0 | uuid-rs | ✅ activo | Fase 1 |
 | `thiserror` | Errores ergonómicos | MIT/Apache-2.0 | dtolnay | ✅ activo | Fase 1 |
 | `tracing` | Logging estructurado | MIT | Tokio team | ✅ activo | Fase 1 |
+| `tracing-subscriber` | Runtime de logging + `RUST_LOG` (env-filter) | MIT | Tokio team | ✅ activo | Fase 1 |
+| `reqwest` (con `rustls-tls`, sin default-tls) | Cliente HTTP para el session server de Mojang | MIT/Apache-2.0 | Hyper (Sean McArthur et al.) | ✅ activo | Fase 1 |
+| `rustls` (transitiva) | TLS en Rust puro — evita openssl/native-tls | MIT/Apache-2.0 | rustls team | ✅ activo | Fase 1 |
 | `libfuzzer-sys` | Motor de fuzzing libFuzzer, solo en `crates/hyperion_protocol/fuzz/` | Apache-2.0/MIT | Rust Fuzz project | ✅ activo | Fase 1 |
 | `rayon` | Paralelismo de datos | MIT/Apache-2.0 | Rayon team | ✅ activo | Fase 3 |
 | `crossbeam` | Utilidades de concurrencia | MIT/Apache-2.0 | Crossbeam team | ✅ activo | Fase 3 |

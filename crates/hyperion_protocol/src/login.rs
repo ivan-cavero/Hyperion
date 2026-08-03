@@ -105,10 +105,22 @@ pub fn decode_login_start(frame: &PacketFrame) -> Result<LoginStart, ProtocolErr
 
     let mut cursor = PacketCursor::new(&frame.payload);
     let username = cursor.read_string(MAX_USERNAME_UTF16_UNITS)?;
+    if !is_valid_username(&username) {
+        return Err(ProtocolError::InvalidUsername);
+    }
     let uuid = cursor.read_uuid()?;
     cursor.finish()?;
 
     Ok(LoginStart { username, uuid })
+}
+
+/// Checks a username against the vanilla rules: only `[a-zA-Z0-9_]`, 1 to 16
+/// characters (length is enforced by `MAX_USERNAME_UTF16_UNITS` above).
+fn is_valid_username(username: &str) -> bool {
+    !username.is_empty()
+        && username
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 /// Decodifica un Encryption Response.
@@ -142,8 +154,10 @@ pub fn decode_login_acknowledged(frame: &PacketFrame) -> Result<(), ProtocolErro
     Ok(())
 }
 
-/// Codifica un Encryption Request completo (trama).
-pub fn encode_encryption_request(request: &EncryptionRequest) -> Result<Vec<u8>, ProtocolError> {
+/// Codifica el payload de un Encryption Request (sin el prefijo de trama).
+pub fn encode_encryption_request_payload(
+    request: &EncryptionRequest,
+) -> Result<Vec<u8>, ProtocolError> {
     let payload = [
         encode_string(&request.server_id, MAX_SERVER_ID_UTF16_UNITS)?,
         encode_bytes(&request.public_key, MAX_PUBLIC_KEY_LENGTH)?,
@@ -152,7 +166,15 @@ pub fn encode_encryption_request(request: &EncryptionRequest) -> Result<Vec<u8>,
     ]
     .concat();
 
-    encode_frame(ENCRYPTION_REQUEST_PACKET_ID, &payload)
+    Ok(payload)
+}
+
+/// Codifica un Encryption Request completo (trama).
+pub fn encode_encryption_request(request: &EncryptionRequest) -> Result<Vec<u8>, ProtocolError> {
+    encode_frame(
+        ENCRYPTION_REQUEST_PACKET_ID,
+        &encode_encryption_request_payload(request)?,
+    )
 }
 
 /// Codifica un Set Compression completo (trama).
@@ -210,13 +232,31 @@ pub fn encode_login_success(success: &LoginSuccess) -> Result<Vec<u8>, ProtocolE
     )
 }
 
+/// Codifica el payload de un Disconnect de login (el motivo como JSON).
+pub fn encode_login_disconnect_payload(reason: &str) -> Result<Vec<u8>, ProtocolError> {
+    let reason_json = serde_json::json!({ "text": reason }).to_string();
+    encode_string(&reason_json, MAX_REASON_UTF16_UNITS)
+}
+
 /// Codifica un Disconnect de login completo (trama) con un componente de
 /// texto como motivo.
 pub fn encode_login_disconnect(reason: &str) -> Result<Vec<u8>, ProtocolError> {
-    let reason_json = serde_json::json!({ "text": reason }).to_string();
-    let payload = encode_string(&reason_json, MAX_REASON_UTF16_UNITS)?;
+    encode_frame(
+        LOGIN_DISCONNECT_PACKET_ID,
+        &encode_login_disconnect_payload(reason)?,
+    )
+}
 
-    encode_frame(LOGIN_DISCONNECT_PACKET_ID, &payload)
+/// The UUID vanilla assigns to offline-mode players: the MD5 digest of the
+/// UTF-8 bytes of `"OfflinePlayer:" + name` with the version-3 and IETF
+/// variant bits set, i.e. Java's `UUID.nameUUIDFromBytes`.
+pub fn offline_mode_uuid(username: &str) -> Uuid {
+    let digest = md5::compute(format!("OfflinePlayer:{username}"));
+    let mut bytes = [0u8; 16];
+    bytes.copy_from_slice(digest.as_ref());
+    bytes[6] = (bytes[6] & 0x0f) | 0x30; // version 3
+    bytes[8] = (bytes[8] & 0x3f) | 0x80; // IETF variant
+    Uuid::from_bytes(bytes)
 }
 
 #[cfg(test)]
@@ -259,6 +299,17 @@ mod tests {
         assert_eq!(
             decode_login_start(&frame),
             Err(ProtocolError::StringTooLong)
+        );
+    }
+
+    #[test]
+    fn login_start_rejects_invalid_username() {
+        let frame_bytes = build_login_start_frame("Bad-Name!", Uuid::nil());
+        let (frame, _) = decode_frame_payload(&frame_bytes);
+
+        assert_eq!(
+            decode_login_start(&frame),
+            Err(ProtocolError::InvalidUsername)
         );
     }
 

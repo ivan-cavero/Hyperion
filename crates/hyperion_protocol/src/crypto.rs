@@ -17,6 +17,9 @@ use crate::ProtocolError;
 /// Session shared secret size: 16 bytes serving as both AES-128 key and IV.
 pub const SHARED_SECRET_LENGTH: usize = 16;
 
+/// Size of the random challenge token sent with the Encryption Request.
+pub const VERIFY_TOKEN_LENGTH: usize = 4;
+
 /// Stream de AES-128/CFB8.
 ///
 /// Mantiene el registro de desplazamiento de 16 bytes entre llamadas, de modo

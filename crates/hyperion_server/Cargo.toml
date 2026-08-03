@@ -18,6 +18,12 @@ hyperion_protocol = { path = "../hyperion_protocol" }
 tokio = { workspace = true }
 bytes = { workspace = true }
 uuid = { workspace = true }
+rand = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
-rand = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+# RSA encryption of the shared secret in the online-mode integration tests.
+rsa = { workspace = true }

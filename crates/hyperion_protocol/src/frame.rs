@@ -90,10 +90,7 @@ pub fn encode_var_i32(value: i32) -> Vec<u8> {
     encode_unsigned_var_i32(value as u32)
 }
 
-pub fn encode_string(
-    value: &str,
-    maximum_utf16_units: usize,
-) -> Result<Vec<u8>, ProtocolError> {
+pub fn encode_string(value: &str, maximum_utf16_units: usize) -> Result<Vec<u8>, ProtocolError> {
     let utf16_units = value.encode_utf16().count();
     let maximum_bytes = maximum_utf16_units
         .checked_mul(3)
@@ -115,7 +112,7 @@ pub fn encode_boolean(value: bool) -> Vec<u8> {
     }
 }
 
-pub fn encode_bytes(value: &[u8], maximum_length: usize) -> Result<Vec<u8>, ProtocolError> {
+pub(crate) fn encode_bytes(value: &[u8], maximum_length: usize) -> Result<Vec<u8>, ProtocolError> {
     if value.len() > maximum_length {
         return Err(ProtocolError::InvalidPacketPayload);
     }

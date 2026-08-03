@@ -5,41 +5,71 @@
 //! offline-mode (unauthenticated).
 //!
 //! Usage:
-//!   hyperion-server [BIND_ADDRESS] [--online-mode]
+//!   hyperion-server [BIND_ADDRESS] [--online-mode | --offline-mode]
+//!
+//! Log level is controlled via `RUST_LOG` (default: `hyperion=info`).
 
+mod config;
 mod network;
+mod session;
 
 use std::process::ExitCode;
 
 use hyperion_core::VERSION;
+use tracing::{error, info};
+use tracing_subscriber::EnvFilter;
 
-/// Default bind address.
-const DEFAULT_BIND_ADDRESS: &str = "0.0.0.0:25565";
+use crate::config::ServerConfig;
+
+const USAGE: &str = "\
+Usage: hyperion-server [BIND_ADDRESS] [--online-mode | --offline-mode]
+
+Options:
+  BIND_ADDRESS     address to listen on (default: 0.0.0.0:25565)
+  --online-mode    authenticate players against Mojang (encrypted sessions)
+  --offline-mode   allow unauthenticated players (default)
+  --help           show this help";
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    println!("Hyperion {VERSION} — native Minecraft server in Rust");
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("hyperion=info")),
+        )
+        .init();
 
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let mut bind_address = DEFAULT_BIND_ADDRESS.to_owned();
-    let mut online_mode = false;
+    info!("Hyperion {VERSION} — native Minecraft server in Rust");
 
-    for arg in &args {
-        match arg.as_str() {
-            "--online-mode" => online_mode = true,
-            "--offline-mode" => online_mode = false,
-            _ if !arg.starts_with('-') => bind_address = arg.clone(),
+    let mut config = ServerConfig::default();
+    for argument in std::env::args().skip(1) {
+        match argument.as_str() {
+            "--online-mode" => config.online_mode = true,
+            "--offline-mode" => config.online_mode = false,
+            "--help" => {
+                println!("{USAGE}");
+                return ExitCode::SUCCESS;
+            }
+            value if !value.starts_with('-') => config.bind_address = value.to_owned(),
             unknown => {
-                eprintln!("Unknown argument: {unknown}");
+                error!("unknown argument: {unknown}");
+                println!("{USAGE}");
                 return ExitCode::FAILURE;
             }
         }
     }
 
-    match network::serve(&bind_address, online_mode).await {
+    info!(
+        bind_address = %config.bind_address,
+        online_mode = config.online_mode,
+        compression_threshold = config.compression_threshold,
+        session_server = %config.session_server_url,
+        "starting server"
+    );
+
+    match network::serve(config).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("Server failed to start: {error}");
+            error!("server failed to start: {error}");
             ExitCode::FAILURE
         }
     }

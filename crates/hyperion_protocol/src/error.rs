@@ -21,6 +21,10 @@ pub enum ProtocolError {
     /// A protocol string exceeded its context-specific limit.
     #[error("protocol string exceeds its maximum length")]
     StringTooLong,
+    /// A username contains characters outside the allowed set
+    /// (`[a-zA-Z0-9_]`, as in vanilla).
+    #[error("username contains invalid characters")]
+    InvalidUsername,
     /// The packet ID does not match the expected packet.
     #[error("unexpected packet ID")]
     InvalidPacketId,
