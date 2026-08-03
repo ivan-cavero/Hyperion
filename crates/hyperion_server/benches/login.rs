@@ -19,6 +19,7 @@ use hyperion_protocol::{
     encode_var_i32, split_frame,
 };
 use hyperion_server::config::ServerConfig;
+use hyperion_server::key_pool::KeyPool;
 use hyperion_server::network::handle_connection;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -114,13 +115,14 @@ async fn read_packet(
 }
 
 /// The full offline-mode login round trip over a real socket.
-async fn login_cycle_once() -> io::Result<()> {
+async fn login_cycle_once(key_pool: KeyPool) -> io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let server_address = listener.local_addr()?;
+    let handle = key_pool.clone();
 
     let server_task = tokio::spawn(async move {
         let (stream, peer_address) = listener.accept().await.expect("client should connect");
-        handle_connection(stream, peer_address, ServerConfig::default())
+        handle_connection(stream, peer_address, ServerConfig::default(), &handle)
             .await
             .expect("server should complete the login")
     });
@@ -161,9 +163,10 @@ async fn login_cycle_once() -> io::Result<()> {
 #[divan::bench]
 fn offline_login_cycle(bencher: divan::Bencher) {
     let runtime = Runtime::new().expect("tokio runtime");
+    let key_pool = runtime.block_on(async { KeyPool::new(2) });
     bencher.bench(|| {
         runtime
-            .block_on(login_cycle_once())
+            .block_on(login_cycle_once(key_pool.clone()))
             .expect("login cycle should succeed");
         black_box(())
     });

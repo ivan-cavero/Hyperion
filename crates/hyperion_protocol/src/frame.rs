@@ -234,18 +234,24 @@ impl<'input> PacketCursor<'input> {
 }
 
 fn encode_unsigned_var_i32(value: u32) -> Vec<u8> {
-    let encoded_byte = (value as u8) & 0x7f;
-    let remaining_value = value >> 7;
+    let mut buffer = [0u8; MAX_GENERAL_VARINT_BYTES];
+    let mut remaining_value = value;
+    let mut index = 0;
 
-    if remaining_value == 0 {
-        vec![encoded_byte]
-    } else {
-        [
-            vec![encoded_byte | 0x80],
-            encode_unsigned_var_i32(remaining_value),
-        ]
-        .concat()
+    loop {
+        let byte = (remaining_value as u8) & 0x7f;
+        remaining_value >>= 7;
+        if remaining_value == 0 {
+            buffer[index] = byte;
+            index += 1;
+            break;
+        } else {
+            buffer[index] = byte | 0x80;
+            index += 1;
+        }
     }
+
+    buffer[..index].to_vec()
 }
 
 /// Decodifica un VarInt desde `input[offset..]`, limitado a `maximum_bytes`.

@@ -20,6 +20,7 @@ use common::{
     parse_encryption_request, parse_login_success, read_string, rsa_encrypt,
 };
 use hyperion_server::config::ServerConfig;
+use hyperion_server::key_pool::KeyPool;
 use hyperion_server::network::{ConnectionError, handle_connection};
 
 /// Full online-mode login: real RSA key exchange, real AES/CFB8 on the
@@ -39,9 +40,10 @@ async fn logs_in_online_with_encryption_and_session_verification() {
         session_server_url: format!("http://{session_address}"),
         ..ServerConfig::default()
     };
+    let key_pool = KeyPool::new(1);
     let server_task = tokio::spawn(async move {
         let (stream, peer_address) = listener.accept().await.expect("client should connect");
-        handle_connection(stream, peer_address, config).await
+        handle_connection(stream, peer_address, config, &key_pool).await
     });
 
     let mut client = MockClient::connect(server_address).await;
@@ -143,9 +145,10 @@ async fn online_login_disconnects_unverified_player() {
         session_server_url: format!("http://{session_address}"),
         ..ServerConfig::default()
     };
+    let key_pool = KeyPool::new(1);
     let server_task = tokio::spawn(async move {
         let (stream, peer_address) = listener.accept().await.expect("client should connect");
-        handle_connection(stream, peer_address, config).await
+        handle_connection(stream, peer_address, config, &key_pool).await
     });
 
     let mut client = MockClient::connect(server_address).await;
@@ -212,9 +215,10 @@ async fn online_login_closes_on_verify_token_mismatch() {
         session_server_url: format!("http://{session_address}"),
         ..ServerConfig::default()
     };
+    let key_pool = KeyPool::new(1);
     let server_task = tokio::spawn(async move {
         let (stream, peer_address) = listener.accept().await.expect("client should connect");
-        handle_connection(stream, peer_address, config).await
+        handle_connection(stream, peer_address, config, &key_pool).await
     });
 
     let mut client = MockClient::connect(server_address).await;

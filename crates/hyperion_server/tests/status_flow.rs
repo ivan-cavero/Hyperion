@@ -7,6 +7,7 @@ use tokio::net::TcpListener;
 
 use common::{MockClient, handshake_payload, read_string};
 use hyperion_server::config::ServerConfig;
+use hyperion_server::key_pool::KeyPool;
 use hyperion_server::network::{
     PONG_RESPONSE_PACKET_ID, STATUS_RESPONSE_PACKET_ID, handle_connection,
 };
@@ -20,9 +21,10 @@ async fn serves_status_and_echoes_ping() {
         .local_addr()
         .expect("listener should have an address");
 
+    let key_pool = KeyPool::new(1);
     let server_task = tokio::spawn(async move {
         let (stream, peer_address) = listener.accept().await.expect("client should connect");
-        handle_connection(stream, peer_address, ServerConfig::default()).await
+        handle_connection(stream, peer_address, ServerConfig::default(), &key_pool).await
     });
 
     let mut client = MockClient::connect(server_address).await;

@@ -24,24 +24,36 @@ use self::connection::Connection;
 use self::login::serve_login;
 use self::status::serve_status;
 use crate::config::ServerConfig;
+use crate::key_pool::KeyPool;
+
+/// Number of background RSA key generators for online-mode logins.
+///
+/// A pool of 4 means up to 4 key generations can run concurrently in the
+/// background, which easily handles burst logins: median keygen takes ≈37 ms,
+/// so 4 generators produce ~108 keys/second — far more than any realistic
+/// server needs.
+const KEY_POOL_SIZE: usize = 4;
 
 /// Accepts connections on `config.bind_address` and dispatches each to its
 /// own task.
 pub async fn serve(config: ServerConfig) -> io::Result<()> {
     let listener = TcpListener::bind(&config.bind_address).await?;
+    let key_pool = KeyPool::new(KEY_POOL_SIZE);
     info!(
         bind_address = %config.bind_address,
         online_mode = config.online_mode,
         compression_threshold = config.compression_threshold,
         session_server = %config.session_server_url,
+        key_pool_size = KEY_POOL_SIZE,
         "server listening"
     );
 
     loop {
         let (stream, peer_address) = listener.accept().await?;
         let config = config.clone();
+        let key_pool = key_pool.clone();
         tokio::spawn(async move {
-            if let Err(error) = handle_connection(stream, peer_address, config).await {
+            if let Err(error) = handle_connection(stream, peer_address, config, &key_pool).await {
                 match error {
                     ConnectionError::Disconnected => {}
                     ConnectionError::Io(io_error) => {
@@ -64,6 +76,7 @@ pub async fn handle_connection(
     stream: TcpStream,
     peer_address: SocketAddr,
     config: ServerConfig,
+    key_pool: &KeyPool,
 ) -> Result<(), ConnectionError> {
     let mut connection = Connection::new(stream);
     debug!(%peer_address, "connection accepted");
@@ -80,7 +93,7 @@ pub async fn handle_connection(
 
     match handshake.intent {
         HandshakeIntent::Status => serve_status(&mut connection).await,
-        HandshakeIntent::Login => serve_login(&mut connection, &config, peer_address).await,
+        HandshakeIntent::Login => serve_login(&mut connection, &config, peer_address, key_pool).await,
         // Transfer arrives in a later milestone.
         HandshakeIntent::Transfer => {
             warn!(%peer_address, "transfer intent is not implemented yet");

@@ -109,23 +109,36 @@ pub fn server_id_hash(server_id: &str, shared_secret: &[u8], public_key: &[u8]) 
 
 fn signed_hex(digest: &[u8]) -> String {
     let negative = digest[0] & 0x80 != 0;
-    let magnitude = if negative {
-        twos_complement(digest)
+
+    // In the positive branch we borrow `digest` directly to avoid an
+    // unnecessary allocation (SHA-1 is 20 bytes → 40 hex chars).
+    let negative_magnitude;
+    let magnitude: &[u8] = if negative {
+        negative_magnitude = twos_complement(digest);
+        &negative_magnitude
     } else {
-        digest.to_vec()
+        digest
     };
-    let body = magnitude
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>()
-        .trim_start_matches('0')
-        .to_owned();
-    let body = if body.is_empty() { "0" } else { &body };
+
+    // Pre-allocate capacity: 2 bytes per hex char (SHA-1: 20 → 40 chars).
+    let mut hex_body = String::with_capacity(magnitude.len() * 2);
+    for byte in magnitude {
+        use std::fmt::Write;
+        write!(hex_body, "{byte:02x}").expect("write to String is infallible");
+    }
+
+    let trimmed = hex_body.trim_start_matches('0');
+    if trimmed.is_empty() {
+        return "0".to_owned();
+    }
 
     if negative {
-        format!("-{body}")
+        let mut result = String::with_capacity(trimmed.len() + 1);
+        result.push('-');
+        result.push_str(trimmed);
+        result
     } else {
-        body.to_owned()
+        trimmed.to_owned()
     }
 }
 

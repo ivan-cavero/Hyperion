@@ -6,5 +6,6 @@
 //! wrapper around [`network::serve`].
 
 pub mod config;
+pub mod key_pool;
 pub mod network;
 pub mod session;

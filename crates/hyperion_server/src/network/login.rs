@@ -18,8 +18,7 @@ use hyperion_protocol::{
     SHARED_SECRET_LENGTH, VERIFY_TOKEN_LENGTH, decode_encryption_response,
     decode_login_acknowledged, decode_login_start, decrypt_pkcs1v15,
     encode_encryption_request_payload, encode_login_disconnect_payload,
-    encode_login_success_payload, encode_var_i32, generate_rsa_keypair, offline_mode_uuid,
-    server_id_hash,
+    encode_login_success_payload, encode_var_i32, offline_mode_uuid, server_id_hash,
 };
 use rand::RngCore;
 use rand::rngs::OsRng;
@@ -28,6 +27,7 @@ use uuid::Uuid;
 
 use super::connection::{Connection, ConnectionError};
 use crate::config::ServerConfig;
+use crate::key_pool::KeyPool;
 use crate::session::has_joined;
 
 /// Handles the Login flow for both online and offline modes.
@@ -35,6 +35,7 @@ pub(super) async fn serve_login(
     connection: &mut Connection,
     config: &ServerConfig,
     peer_address: std::net::SocketAddr,
+    key_pool: &KeyPool,
 ) -> Result<(), ConnectionError> {
     let login_start_frame = connection.read_frame().await?;
     let login_start = match decode_login_start(&login_start_frame) {
@@ -61,7 +62,7 @@ pub(super) async fn serve_login(
     );
 
     let result = if config.online_mode {
-        serve_login_online(connection, &login_start, config).await
+        serve_login_online(connection, &login_start, config, key_pool).await
     } else {
         serve_login_offline(connection, &login_start, config.compression_threshold).await
     };
@@ -133,26 +134,23 @@ async fn serve_login_online(
     connection: &mut Connection,
     login_start: &LoginStart,
     config: &ServerConfig,
+    key_pool: &KeyPool,
 ) -> Result<(), ConnectionError> {
     let username = login_start.username.clone();
 
     // Step 1: RSA key pair and random verify token (cryptographically secure).
-    // Key generation is CPU-bound (≈100–300 ms in release), so it runs on a
-    // dedicated blocking thread instead of occupying one of tokio's limited
-    // async worker threads. `spawn_blocking` returns the inner `Result`, so
-    // both failure layers are mapped here.
+    // Key generation runs in background tasks and is pre-generated (see
+    // `KeyPool`), so this is a fast channel receive rather than a blocking
+    // call that stalls the async worker.
     let keygen_started = Instant::now();
-    let (public_key_der, private_key) = tokio::task::spawn_blocking(generate_rsa_keypair)
-        .await
-        .map_err(|join_error| ConnectionError::Auth(join_error.to_string()))?
-        .map_err(|error| ConnectionError::Auth(error.to_string()))?;
+    let (public_key_der, private_key) = key_pool.acquire().await;
     let mut verify_token = [0u8; VERIFY_TOKEN_LENGTH];
     OsRng.fill_bytes(&mut verify_token);
     debug!(
         username = %username,
         elapsed_ms = keygen_started.elapsed().as_millis() as u64,
         public_key_len = public_key_der.len(),
-        "RSA key pair generated"
+        "RSA key pair acquired from pool"
     );
 
     // Step 2: Send Encryption Request.

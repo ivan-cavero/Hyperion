@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use common::{MockClient, encode_string, handshake_payload};
 use hyperion_server::config::ServerConfig;
+use hyperion_server::key_pool::KeyPool;
 use hyperion_server::network::{ConnectionError, handle_connection};
 
 #[tokio::test]
@@ -28,9 +29,10 @@ async fn logs_in_offline_with_vanilla_uuid_and_compression() {
         compression_threshold: 4,
         ..ServerConfig::default()
     };
+    let key_pool = KeyPool::new(1);
     let server_task = tokio::spawn(async move {
         let (stream, peer_address) = listener.accept().await.expect("client should connect");
-        handle_connection(stream, peer_address, config).await
+        handle_connection(stream, peer_address, config, &key_pool).await
     });
 
     let mut client = MockClient::connect(server_address).await;
@@ -89,9 +91,10 @@ async fn login_rejects_invalid_username_with_disconnect() {
         .local_addr()
         .expect("listener should have an address");
 
+    let key_pool = KeyPool::new(1);
     let server_task = tokio::spawn(async move {
         let (stream, peer_address) = listener.accept().await.expect("client should connect");
-        handle_connection(stream, peer_address, ServerConfig::default()).await
+        handle_connection(stream, peer_address, ServerConfig::default(), &key_pool).await
     });
 
     let mut client = MockClient::connect(server_address).await;
