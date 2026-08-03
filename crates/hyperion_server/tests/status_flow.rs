@@ -21,10 +21,15 @@ async fn serves_status_and_echoes_ping() {
         .local_addr()
         .expect("listener should have an address");
 
+    // Non-default player limit to prove the status response uses the config.
+    let config = ServerConfig {
+        max_players: 42,
+        ..ServerConfig::default()
+    };
     let key_pool = KeyPool::new(1);
     let server_task = tokio::spawn(async move {
         let (stream, peer_address) = listener.accept().await.expect("client should connect");
-        handle_connection(stream, peer_address, ServerConfig::default(), &key_pool).await
+        handle_connection(stream, peer_address, config, &key_pool).await
     });
 
     let mut client = MockClient::connect(server_address).await;
@@ -43,6 +48,10 @@ async fn serves_status_and_echoes_ping() {
     assert!(response_json.contains("\"enforcesSecureChat\":false"));
     assert!(response_json.contains(&format!("\"protocol\":{SUPPORTED_PROTOCOL_VERSION}")));
     assert!(response_json.contains("\"text\":\"A Hyperion server\""));
+    assert!(
+        response_json.contains("\"max\":42"),
+        "the status response must advertise the configured player limit"
+    );
 
     // Ping Request → Pong Response with the same payload.
     let ping_payload = 12345i64.to_be_bytes().to_vec();

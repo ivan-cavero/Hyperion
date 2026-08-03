@@ -20,13 +20,14 @@ const STATUS_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Version name advertised in the server list.
 const PROTOCOL_VERSION_NAME: &str = "26.2";
-/// Maximum player count advertised.
-const MAX_PLAYERS: i32 = 20;
 /// Server list MOTD.
 const SERVER_MOTD: &str = "A Hyperion server";
 
 /// Handles the Status exchange: server list and ping/pong.
-pub(super) async fn serve_status(connection: &mut Connection) -> Result<(), ConnectionError> {
+pub(super) async fn serve_status(
+    connection: &mut Connection,
+    config: &crate::config::ServerConfig,
+) -> Result<(), ConnectionError> {
     loop {
         let frame = match connection.read_frame_timeout(STATUS_READ_TIMEOUT).await {
             Ok(frame) => frame,
@@ -38,7 +39,7 @@ pub(super) async fn serve_status(connection: &mut Connection) -> Result<(), Conn
             0 => {
                 decode_status_request(&frame)?;
                 trace!("status request received");
-                let payload = encode_status_response_payload(&default_status_response())?;
+                let payload = encode_status_response_payload(&status_response(config))?;
                 connection
                     .write_frame(STATUS_RESPONSE_PACKET_ID, &payload)
                     .await?;
@@ -57,14 +58,14 @@ pub(super) async fn serve_status(connection: &mut Connection) -> Result<(), Conn
 }
 
 /// The server list advertised by Hyperion.
-fn default_status_response() -> StatusResponse {
+fn status_response(config: &crate::config::ServerConfig) -> StatusResponse {
     StatusResponse {
         version: StatusVersion {
             name: PROTOCOL_VERSION_NAME.to_owned(),
             protocol: SUPPORTED_PROTOCOL_VERSION,
         },
         players: StatusPlayers {
-            max: MAX_PLAYERS,
+            max: config.max_players,
             online: 0,
             sample: Vec::new(),
         },

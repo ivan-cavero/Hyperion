@@ -107,7 +107,7 @@ pub async fn handle_connection(
     );
 
     match handshake.intent {
-        HandshakeIntent::Status => match serve_status(&mut connection).await {
+        HandshakeIntent::Status => match serve_status(&mut connection, &config).await {
             Ok(()) => Ok(()),
             Err(error) => Err(fail("status", &peer_address, None, error)),
         },
