@@ -17,3 +17,9 @@ multiple-versions = "warn"
 
 [advisories]
 yanked = "deny"
+# RUSTSEC-2023-0071: Marvin Attack timing sidechannel in `rsa` crate.
+# No patched version exists. Workaround: only exploitable over the network
+# when an attacker can observe fine-grained timing of RSA operations.
+# For Minecraft handshake (one RSA decrypt per connection, server-side)
+# the risk is negligible. Re-evaluate when rsa 0.10+ ships.
+ignore = ["RUSTSEC-2023-0071"]

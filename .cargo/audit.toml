@@ -1,0 +1,5 @@
+[advisories]
+# RUSTSEC-2023-0071: Marvin Attack timing sidechannel in `rsa` crate.
+# No patched version exists. Risk negligible for Minecraft handshake context.
+# Re-evaluate when rsa 0.10+ ships.
+ignore = ["RUSTSEC-2023-0071"]
