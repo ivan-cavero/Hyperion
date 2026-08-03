@@ -24,29 +24,41 @@ use tokio::sync::{Mutex, mpsc};
 /// A key pair ready for one online-mode login.
 type RsaKeyMaterial = (Vec<u8>, RsaPrivateKey);
 
+/// How many pre-generated keys the pool may hold before the generators
+/// apply backpressure and stop producing.
+///
+/// A bounded channel is essential: an unbounded one would let the background
+/// generators run forever, accumulating RSA keys (≈1–3 KB each) at ~100/sec
+/// even on an idle server. With 4 generators, 16 slots ≈ 4 in flight each,
+/// which still absorbs login bursts (keygen ≈37 ms, consumption ≈300 µs).
+const KEY_POOL_CAPACITY: usize = 16;
+
 /// Pool that keeps `pool_size` background tasks generating RSA key pairs.
 ///
 /// Clone the pool to pass it to spawned tasks — all clones share the same
 /// underlying channel of pre-generated keys.
 #[derive(Clone)]
 pub struct KeyPool {
-    receiver: Arc<Mutex<mpsc::UnboundedReceiver<RsaKeyMaterial>>>,
+    receiver: Arc<Mutex<mpsc::Receiver<RsaKeyMaterial>>>,
 }
 
 /// Cloneable handle used by background key-generation tasks to submit keys.
 #[derive(Clone)]
 struct Handle {
-    sender: mpsc::UnboundedSender<RsaKeyMaterial>,
+    sender: mpsc::Sender<RsaKeyMaterial>,
 }
 
 impl KeyPool {
     /// Creates a pool and spawns `pool_size` background generator tasks.
     ///
     /// Each task runs an infinite loop: `generate_rsa_keypair` on a blocking
-    /// thread, then feeds the result into the shared channel. If the channel
-    /// receiver is dropped (the pool is destroyed), all generator tasks exit.
+    /// thread, then feeds the result into the shared channel. The bounded
+    /// channel applies backpressure — when the pool is full, the generators
+    /// block on send instead of producing keys nobody will consume. If the
+    /// channel receiver is dropped (the pool is destroyed), all generator
+    /// tasks exit.
     pub fn new(pool_size: usize) -> Self {
-        let (sender, receiver) = mpsc::unbounded_channel();
+        let (sender, receiver) = mpsc::channel(KEY_POOL_CAPACITY);
         let handle = Handle { sender };
 
         for index in 0..pool_size {
@@ -57,7 +69,7 @@ impl KeyPool {
                         .await
                         .expect("RSA keygen task panicked")
                         .expect("RSA keygen failed");
-                    if handle.sender.send(key).is_err() {
+                    if handle.sender.send(key).await.is_err() {
                         // The pool was dropped — exit the generator loop.
                         break;
                     }
@@ -82,5 +94,31 @@ impl KeyPool {
             .recv()
             .await
             .expect("all RSA key generators have stopped")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn acquire_returns_a_usable_public_key() {
+        let pool = KeyPool::new(1);
+        let (public_key_der, _private_key) = pool.acquire().await;
+        // DER SubjectPublicKeyInfo starts with a SEQUENCE tag.
+        assert!(public_key_der.starts_with(&[0x30]), "DER sequence tag");
+        assert!(!public_key_der.is_empty());
+    }
+
+    #[tokio::test]
+    async fn generators_replenish_past_channel_capacity() {
+        // Consume far more keys than the bounded channel can hold: the
+        // generators must keep producing under backpressure, and every key
+        // must still be a valid DER public key.
+        let pool = KeyPool::new(2);
+        for _ in 0..8 {
+            let (public_key_der, _private_key) = pool.acquire().await;
+            assert!(public_key_der.starts_with(&[0x30]), "DER sequence tag");
+        }
     }
 }
