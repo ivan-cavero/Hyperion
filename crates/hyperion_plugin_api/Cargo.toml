@@ -9,3 +9,6 @@ description = "Hyperion plugin API: WASM/WIT ABI, events, commands, scripting"
 
 [dependencies]
 # Phase 4: will add whitelist deps (wasmtime, mlua).
+
+[lints]
+workspace = true

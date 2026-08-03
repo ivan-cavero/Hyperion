@@ -8,34 +8,35 @@ mod handshake;
 mod login;
 mod status;
 
-pub use compression::{compress_body, decompress_body, MAX_UNCOMPRESSED_LENGTH};
+pub use compression::{MAX_UNCOMPRESSED_LENGTH, compress_body, decompress_body};
 pub use crypto::{
-    decrypt_pkcs1v15, generate_rsa_keypair, server_id_hash, Cfb8Stream, SHARED_SECRET_LENGTH,
-    VERIFY_TOKEN_LENGTH,
+    Cfb8Stream, SHARED_SECRET_LENGTH, VERIFY_TOKEN_LENGTH, decrypt_pkcs1v15, generate_rsa_keypair,
+    server_id_hash,
 };
 pub use error::ProtocolError;
 pub use frame::{
-    decode_frame, decode_packet_data, decode_var_i32, encode_frame, encode_var_i32, split_frame,
-    PacketFrame, MAX_PACKET_LENGTH,
+    MAX_PACKET_LENGTH, PacketFrame, decode_frame, decode_packet_data, decode_var_i32, encode_frame,
+    encode_var_i32, split_frame,
 };
 pub use handshake::{
-    decode_handshake, HandshakeIntent, HandshakePacket, MAX_HANDSHAKE_SERVER_ADDRESS_UTF16_UNITS,
+    HandshakeIntent, HandshakePacket, MAX_HANDSHAKE_SERVER_ADDRESS_UTF16_UNITS, decode_handshake,
 };
 pub use login::{
+    ENCRYPTION_REQUEST_PACKET_ID, EncryptionRequest, EncryptionResponse, GameProfile,
+    GameProfileProperty, LOGIN_ACKNOWLEDGED_PACKET_ID, LOGIN_DISCONNECT_PACKET_ID,
+    LOGIN_SUCCESS_PACKET_ID, LoginStart, LoginSuccess, MAX_PROPERTIES,
+    MAX_PROPERTY_NAME_UTF16_UNITS, MAX_PROPERTY_SIGNATURE_UTF16_UNITS,
+    MAX_PROPERTY_VALUE_UTF16_UNITS, MAX_PUBLIC_KEY_LENGTH, MAX_SHARED_SECRET_LENGTH,
+    MAX_USERNAME_UTF16_UNITS, MAX_VERIFY_TOKEN_LENGTH, SET_COMPRESSION_PACKET_ID, SetCompression,
     decode_encryption_response, decode_login_acknowledged, decode_login_start,
     encode_encryption_request, encode_encryption_request_payload, encode_login_disconnect,
     encode_login_disconnect_payload, encode_login_success, encode_login_success_payload,
-    encode_set_compression, offline_mode_uuid, EncryptionRequest, EncryptionResponse, GameProfile,
-    GameProfileProperty, LoginStart, LoginSuccess, SetCompression, ENCRYPTION_REQUEST_PACKET_ID,
-    LOGIN_ACKNOWLEDGED_PACKET_ID, LOGIN_DISCONNECT_PACKET_ID, LOGIN_SUCCESS_PACKET_ID,
-    MAX_PROPERTIES, MAX_PROPERTY_NAME_UTF16_UNITS, MAX_PROPERTY_SIGNATURE_UTF16_UNITS,
-    MAX_PROPERTY_VALUE_UTF16_UNITS, MAX_PUBLIC_KEY_LENGTH, MAX_SHARED_SECRET_LENGTH,
-    MAX_USERNAME_UTF16_UNITS, MAX_VERIFY_TOKEN_LENGTH, SET_COMPRESSION_PACKET_ID,
+    encode_set_compression, offline_mode_uuid,
 };
 pub use status::{
-    decode_ping_request, decode_status_request, encode_pong_response, encode_status_response,
-    encode_status_response_payload, PingRequest, StatusDescription, StatusPlayer, StatusPlayers,
-    StatusResponse, StatusVersion, MAX_STATUS_RESPONSE_UTF16_UNITS,
+    MAX_STATUS_RESPONSE_UTF16_UNITS, PingRequest, StatusDescription, StatusPlayer, StatusPlayers,
+    StatusResponse, StatusVersion, decode_ping_request, decode_status_request,
+    encode_pong_response, encode_status_response, encode_status_response_payload,
 };
 
 /// Protocol version used by Minecraft Java Edition 26.2.

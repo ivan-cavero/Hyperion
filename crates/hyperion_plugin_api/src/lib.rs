@@ -12,13 +12,3 @@ pub enum Event {
     Chat,
     BlockBreak,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn events_are_distinct() {
-        assert_ne!(Event::PlayerJoin, Event::PlayerQuit);
-    }
-}

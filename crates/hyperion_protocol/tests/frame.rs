@@ -1,4 +1,4 @@
-use hyperion_protocol::{decode_frame, encode_frame, ProtocolError};
+use hyperion_protocol::{ProtocolError, decode_frame, encode_frame};
 
 #[test]
 fn frame_round_trip_preserves_packet_and_payload() {

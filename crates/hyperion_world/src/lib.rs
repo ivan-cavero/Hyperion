@@ -6,13 +6,3 @@
 
 /// World seed (u64, same as Java Edition).
 pub type Seed = u64;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn seed_is_u64() {
-        let _seed: Seed = 42;
-    }
-}

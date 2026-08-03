@@ -12,12 +12,12 @@
 
 use std::io::{Read, Write};
 
+use flate2::Compression;
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
-use flate2::Compression;
 
-use crate::frame::{decode_var_i32_at, encode_var_i32};
 use crate::ProtocolError;
+use crate::frame::{decode_var_i32_at, encode_var_i32};
 
 /// Longitud máxima de un paquete sin comprimir en el wire (2^23).
 pub const MAX_UNCOMPRESSED_LENGTH: usize = 8_388_608;

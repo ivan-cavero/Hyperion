@@ -10,3 +10,6 @@ description = "Hyperion: experimental Java plugin compatibility layer (TeaVM/WAS
 [dependencies]
 # Research-only crate (ADR 0006, docs/COMPATIBILITY.md). NEVER wired into hot paths.
 # Phase 4.5: host-import stubs for the Bukkit API subset + wasmtime integration.
+
+[lints]
+workspace = true

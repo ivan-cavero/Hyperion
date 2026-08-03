@@ -1,7 +1,7 @@
 use hyperion_protocol::{
-    decode_frame, decode_ping_request, decode_status_request, encode_pong_response,
-    encode_status_response, ProtocolError, StatusDescription, StatusPlayers, StatusResponse,
-    StatusVersion, SUPPORTED_PROTOCOL_VERSION,
+    ProtocolError, SUPPORTED_PROTOCOL_VERSION, StatusDescription, StatusPlayers, StatusResponse,
+    StatusVersion, decode_frame, decode_ping_request, decode_status_request, encode_pong_response,
+    encode_status_response,
 };
 
 #[test]

@@ -18,3 +18,13 @@ md5 = { workspace = true }
 aes = { workspace = true }
 flate2 = { workspace = true }
 rand = { workspace = true }
+
+[dev-dependencies]
+divan = { workspace = true }
+
+[[bench]]
+name = "protocol"
+harness = false
+
+[lints]
+workspace = true

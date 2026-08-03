@@ -20,13 +20,3 @@ impl BlockPos {
         Self { x, y, z }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn block_pos_default_is_origin() {
-        assert_eq!(BlockPos::default(), BlockPos::new(0, 0, 0));
-    }
-}

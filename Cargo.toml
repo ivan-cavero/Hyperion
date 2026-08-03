@@ -4,7 +4,7 @@ resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 rust-version = "1.94"
 license = "MIT"
 repository = "https://github.com/ivan-cavero/Hyperion"
@@ -51,6 +51,9 @@ dashmap = "6"                                         # concurrent maps
 wasmtime = "46"        # WASM runtime (latest stable, needs Rust ≥1.94)
 mlua = { version = "0.11", features = ["lua54"] }     # Lua scripting (latest stable, needs Rust ≥1.88)
 
+# Dev-only tooling (never shipped):
+divan = "0.1"                                          # benchmarks (stable Rust, no nightly)
+
 # Open decision (Phase 3): bevy_ecs vs a custom minimal ECS.
 # bevy_ecs = "0.14"
 
@@ -63,3 +66,12 @@ codegen-units = 1
 # Dev profile: keep local iteration fast but usable.
 [profile.dev]
 opt-level = 1
+
+# Benchmark profile: keep debug info so Divan can attribute samples to lines.
+[profile.bench]
+debug = 2
+
+# Shared lints, applied by every crate via `[lints] workspace = true`
+# (policy: CONTRIBUTING.md — no `unsafe` without justification).
+[workspace.lints.rust]
+unsafe_code = "deny"

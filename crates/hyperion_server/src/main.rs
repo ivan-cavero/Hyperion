@@ -9,17 +9,13 @@
 //!
 //! Log level is controlled via `RUST_LOG` (default: `hyperion=info`).
 
-mod config;
-mod network;
-mod session;
-
 use std::process::ExitCode;
 
 use hyperion_core::VERSION;
+use hyperion_server::config::ServerConfig;
+use hyperion_server::network::serve;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
-
-use crate::config::ServerConfig;
 
 const USAGE: &str = "\
 Usage: hyperion-server [BIND_ADDRESS] [--online-mode | --offline-mode]
@@ -66,7 +62,7 @@ async fn main() -> ExitCode {
         "starting server"
     );
 
-    match network::serve(config).await {
+    match serve(config).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             error!("server failed to start: {error}");

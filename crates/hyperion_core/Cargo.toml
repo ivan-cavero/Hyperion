@@ -9,3 +9,6 @@ description = "Hyperion core: base types, world math, registries"
 
 [dependencies]
 # Phase 0: no external dependencies. Original base types.
+
+[lints]
+workspace = true

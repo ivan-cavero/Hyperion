@@ -2,8 +2,8 @@ use std::io::{self, Write};
 
 use serde::Serialize;
 
-use crate::frame::{encode_frame, encode_string, PacketFrame};
 use crate::ProtocolError;
+use crate::frame::{PacketFrame, encode_frame, encode_string};
 
 /// Maximum UTF-16 code units in a Status Response JSON string.
 pub const MAX_STATUS_RESPONSE_UTF16_UNITS: usize = 32_767;

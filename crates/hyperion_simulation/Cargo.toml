@@ -10,3 +10,6 @@ description = "Hyperion simulation: per-region ticking, ECS, entities"
 [dependencies]
 # Phase 3: will add whitelist deps (rayon, crossbeam, parking_lot, dashmap)
 # + open decision: bevy_ecs vs custom ECS.
+
+[lints]
+workspace = true

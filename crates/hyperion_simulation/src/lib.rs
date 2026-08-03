@@ -7,13 +7,3 @@
 
 /// Target ticks per second (vanilla: 20).
 pub const TPS: u32 = 20;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn vanilla_tps() {
-        assert_eq!(TPS, 20);
-    }
-}

@@ -27,3 +27,12 @@ tracing-subscriber = { workspace = true }
 [dev-dependencies]
 # RSA encryption of the shared secret in the online-mode integration tests.
 rsa = { workspace = true }
+# Benchmarks (phase horizon).
+divan = { workspace = true }
+
+[[bench]]
+name = "login"
+harness = false
+
+[lints]
+workspace = true

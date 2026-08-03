@@ -1,6 +1,6 @@
 use hyperion_protocol::{
-    decode_frame, decode_handshake, encode_frame, HandshakeIntent, ProtocolError,
-    SUPPORTED_PROTOCOL_VERSION,
+    HandshakeIntent, ProtocolError, SUPPORTED_PROTOCOL_VERSION, decode_frame, decode_handshake,
+    encode_frame,
 };
 
 fn encode_var_i32(value: i32) -> Vec<u8> {

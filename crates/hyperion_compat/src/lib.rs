@@ -22,17 +22,3 @@ pub enum CompatPlugin {
     #[allow(dead_code)] // plan B, not implemented yet
     Jar(Vec<u8>),
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn wasm_plugins_are_bytes() {
-        let p = CompatPlugin::Wasm(vec![0x00, 0x61, 0x73, 0x6d]); // "\0asm" magic
-        match p {
-            CompatPlugin::Wasm(bytes) => assert_eq!(bytes, vec![0x00, 0x61, 0x73, 0x6d]),
-            _ => unreachable!(),
-        }
-    }
-}

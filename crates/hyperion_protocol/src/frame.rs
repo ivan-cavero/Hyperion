@@ -105,11 +105,7 @@ pub fn encode_string(value: &str, maximum_utf16_units: usize) -> Result<Vec<u8>,
 }
 
 pub fn encode_boolean(value: bool) -> Vec<u8> {
-    if value {
-        vec![1]
-    } else {
-        vec![0]
-    }
+    if value { vec![1] } else { vec![0] }
 }
 
 pub(crate) fn encode_bytes(value: &[u8], maximum_length: usize) -> Result<Vec<u8>, ProtocolError> {

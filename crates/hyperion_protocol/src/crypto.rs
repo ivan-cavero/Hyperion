@@ -5,8 +5,8 @@
 //! (PKCS#1 v1.5). The RSA key is 1024 bits and the public key is sent as
 //! DER SubjectPublicKeyInfo.
 
-use aes::cipher::{Block, BlockEncrypt, KeyInit};
 use aes::Aes128;
+use aes::cipher::{Block, BlockEncrypt, KeyInit};
 use rand::rngs::OsRng;
 use rsa::pkcs8::EncodePublicKey;
 use rsa::{Pkcs1v15Encrypt, RsaPrivateKey};

@@ -1,5 +1,5 @@
-use crate::frame::{PacketCursor, PacketFrame};
 use crate::ProtocolError;
+use crate::frame::{PacketCursor, PacketFrame};
 
 /// Maximum UTF-16 code units in the Handshake server address.
 pub const MAX_HANDSHAKE_SERVER_ADDRESS_UTF16_UNITS: usize = 255;

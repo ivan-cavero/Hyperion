@@ -6,11 +6,11 @@
 
 use uuid::Uuid;
 
-use crate::frame::{
-    encode_boolean, encode_bytes, encode_frame, encode_string, encode_uuid, encode_var_i32,
-    PacketCursor, PacketFrame,
-};
 use crate::ProtocolError;
+use crate::frame::{
+    PacketCursor, PacketFrame, encode_boolean, encode_bytes, encode_frame, encode_string,
+    encode_uuid, encode_var_i32,
+};
 
 pub const LOGIN_START_PACKET_ID: i32 = 0;
 pub const ENCRYPTION_REQUEST_PACKET_ID: i32 = 1;

@@ -22,7 +22,7 @@
 
 1. Crea una rama desde `main`.
 2. Haz cambios pequeños y revisables.
-3. Ejecuta localmente: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`.
+3. Ejecuta localmente: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test` (la matriz completa de comandos y qué cubre cada uno está en [`TESTING.md`](TESTING.md)).
 4. Abre el PR describiendo *qué* y *por qué* (y cómo lo probaste).
 5. Un maintainer revisa; discute en el hilo hasta aprobar.
 
