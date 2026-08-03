@@ -6,6 +6,7 @@
 //! at a local mock server.
 
 use std::sync::OnceLock;
+use std::time::Duration;
 
 use hyperion_protocol::{GameProfile, GameProfileProperty};
 use serde::Deserialize;
@@ -19,6 +20,9 @@ static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 fn http_client() -> &'static reqwest::Client {
     HTTP_CLIENT.get_or_init(|| {
         reqwest::Client::builder()
+            // A stuck session server must not hold a login task forever.
+            .timeout(Duration::from_secs(10))
+            .connect_timeout(Duration::from_secs(5))
             .build()
             .expect("HTTP client must build")
     })

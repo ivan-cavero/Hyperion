@@ -5,6 +5,7 @@
 //! cipher and the zlib compression threshold.
 
 use std::io;
+use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
 use hyperion_protocol::{
@@ -19,6 +20,8 @@ use tokio::net::TcpStream;
 pub enum ConnectionError {
     /// The client closed the connection.
     Disconnected,
+    /// The client did not send anything within the allowed time.
+    TimedOut,
     /// The network I/O failed.
     Io(io::Error),
     /// The received frame violates the protocol.
@@ -121,6 +124,21 @@ impl Connection {
         decode_packet_data(&packet_body).map_err(ConnectionError::Protocol)
     }
 
+    /// Reads the next frame but gives up with [`ConnectionError::TimedOut`]
+    /// if the client sends nothing within `timeout`.
+    ///
+    /// Used in short-lived states (status, login) where an idle socket would
+    /// otherwise occupy a task forever. The Play state must NOT use this:
+    /// it is long-lived by design and its keep-alive loop handles silence.
+    pub(crate) async fn read_frame_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<PacketFrame, ConnectionError> {
+        tokio::time::timeout(timeout, self.read_frame())
+            .await
+            .map_err(|_elapsed| ConnectionError::TimedOut)?
+    }
+
     /// Writes a packet (ID + payload) applying compression and encryption.
     pub(crate) async fn write_frame(
         &mut self,
@@ -169,5 +187,38 @@ impl Connection {
     pub(crate) fn enable_encryption(&mut self, shared_secret: &[u8; SHARED_SECRET_LENGTH]) {
         self.encrypt_cipher = Some(Cfb8Stream::new(shared_secret));
         self.decrypt_cipher = Some(Cfb8Stream::new(shared_secret));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn read_frame_times_out_on_silent_client() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener should bind");
+        let server_address = listener
+            .local_addr()
+            .expect("listener should have an address");
+
+        let server_task = tokio::spawn(async move {
+            let (stream, _peer) = listener.accept().await.expect("client should connect");
+            let mut connection = Connection::new(stream);
+            connection
+                .read_frame_timeout(Duration::from_millis(100))
+                .await
+        });
+
+        // Connect but send nothing: the read must give up on its own.
+        let _client = tokio::net::TcpStream::connect(server_address)
+            .await
+            .expect("client should connect");
+        let result = server_task
+            .await
+            .expect("server task should finish")
+            .expect_err("a silent client must time out");
+        assert!(matches!(result, ConnectionError::TimedOut));
     }
 }

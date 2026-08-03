@@ -165,6 +165,12 @@ fn fail(
                 "client disconnected"
             ),
         },
+        ConnectionError::TimedOut => warn!(
+            %peer_address,
+            username = who,
+            stage,
+            "connection timed out: the client stopped responding"
+        ),
         ConnectionError::Io(io_error) => error!(
             %peer_address,
             username = who,

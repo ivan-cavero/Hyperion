@@ -1,5 +1,7 @@
 //! The Status exchange: server list and ping/pong.
 
+use std::time::Duration;
+
 use hyperion_protocol::{
     SUPPORTED_PROTOCOL_VERSION, StatusDescription, StatusPlayers, StatusResponse, StatusVersion,
     decode_ping_request, decode_status_request, encode_status_response_payload,
@@ -12,6 +14,10 @@ use super::connection::{Connection, ConnectionError};
 pub const STATUS_RESPONSE_PACKET_ID: i32 = 0;
 pub const PONG_RESPONSE_PACKET_ID: i32 = 1;
 
+/// An idle status connection is dropped after this long; it only exists to
+/// answer a server-list probe.
+const STATUS_READ_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Version name advertised in the server list.
 const PROTOCOL_VERSION_NAME: &str = "26.2";
 /// Maximum player count advertised.
@@ -22,9 +28,9 @@ const SERVER_MOTD: &str = "A Hyperion server";
 /// Handles the Status exchange: server list and ping/pong.
 pub(super) async fn serve_status(connection: &mut Connection) -> Result<(), ConnectionError> {
     loop {
-        let frame = match connection.read_frame().await {
+        let frame = match connection.read_frame_timeout(STATUS_READ_TIMEOUT).await {
             Ok(frame) => frame,
-            Err(ConnectionError::Disconnected) => return Ok(()),
+            Err(ConnectionError::Disconnected) | Err(ConnectionError::TimedOut) => return Ok(()),
             Err(error) => return Err(error),
         };
         match frame.packet_id {

@@ -22,6 +22,7 @@ use hyperion_protocol::{
 };
 use rand::RngCore;
 use rand::rngs::OsRng;
+use std::time::Duration;
 use tracing::{debug, info, trace, warn};
 use uuid::Uuid;
 
@@ -29,6 +30,10 @@ use super::connection::{Connection, ConnectionError};
 use crate::config::ServerConfig;
 use crate::key_pool::KeyPool;
 use crate::session::has_joined;
+
+/// A client that stalls mid-login occupies a task and a TCP slot for
+/// nothing; vanilla also gives up on silent login attempts (~30 s).
+const LOGIN_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Handles the Login flow for both online and offline modes and returns
 /// the authenticated game profile for the play state.
@@ -38,7 +43,7 @@ pub(super) async fn serve_login(
     peer_address: std::net::SocketAddr,
     key_pool: &KeyPool,
 ) -> Result<GameProfile, ConnectionError> {
-    let login_start_frame = connection.read_frame().await?;
+    let login_start_frame = connection.read_frame_timeout(LOGIN_READ_TIMEOUT).await?;
     let login_start = match decode_login_start(&login_start_frame) {
         Ok(login_start) => login_start,
         Err(ProtocolError::InvalidUsername) => {
@@ -113,7 +118,7 @@ async fn serve_login_offline(
         .await?;
 
     // Login Acknowledged: the client transitions to Configuration.
-    let acknowledged_frame = connection.read_frame().await?;
+    let acknowledged_frame = connection.read_frame_timeout(LOGIN_READ_TIMEOUT).await?;
     decode_login_acknowledged(&acknowledged_frame)?;
     trace!("login acknowledged");
 
@@ -172,7 +177,7 @@ async fn serve_login_online(
     );
 
     // Step 3: Receive Encryption Response.
-    let response_frame = connection.read_frame().await?;
+    let response_frame = connection.read_frame_timeout(LOGIN_READ_TIMEOUT).await?;
     let encryption_response = decode_encryption_response(&response_frame)?;
     debug!(
         username = %username,
@@ -269,7 +274,7 @@ async fn serve_login_online(
         .await?;
 
     // Step 10: Login Acknowledged (encrypted from the client).
-    let acknowledged_frame = connection.read_frame().await?;
+    let acknowledged_frame = connection.read_frame_timeout(LOGIN_READ_TIMEOUT).await?;
     decode_login_acknowledged(&acknowledged_frame)?;
     trace!(username = %username, "login acknowledged");
 
