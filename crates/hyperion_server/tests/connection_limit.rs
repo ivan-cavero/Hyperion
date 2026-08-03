@@ -28,9 +28,8 @@ async fn excess_connections_wait_for_a_free_slot() {
         ..ServerConfig::default()
     };
     let key_pool = KeyPool::new(1);
-    let server_task = tokio::spawn(async move {
-        serve_with_listener(listener, config, key_pool).await
-    });
+    let server_task =
+        tokio::spawn(async move { serve_with_listener(listener, config, key_pool).await });
 
     // First client takes the only slot and completes a status exchange.
     let mut first = MockClient::connect(server_address).await;

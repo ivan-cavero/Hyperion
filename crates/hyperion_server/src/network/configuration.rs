@@ -33,9 +33,7 @@ use hyperion_protocol::{
 use tracing::{debug, info, trace, warn};
 
 use super::connection::{Connection, ConnectionError};
-use super::join_data::{
-    CORE_KNOWN_PACK, VANILLA_REGISTRIES, VANILLA_TAGS, registry_entry_nbt,
-};
+use super::join_data::{CORE_KNOWN_PACK, VANILLA_REGISTRIES, VANILLA_TAGS, registry_entry_nbt};
 use crate::config::ServerConfig;
 
 /// Sections in a default world column (Y in -64..=320).
@@ -84,7 +82,10 @@ pub(super) async fn serve_configuration(
     let core_negotiated = client_packs
         .iter()
         .any(|pack| pack.namespace == ns && pack.id == id);
-    info!(?client_packs, core_negotiated, "known packs response from client");
+    info!(
+        ?client_packs,
+        core_negotiated, "known packs response from client"
+    );
 
     // --- 4. Registry Data ------------------------------------------------
     for (registry_id, entry_paths) in VANILLA_REGISTRIES {
@@ -117,8 +118,7 @@ pub(super) async fn serve_configuration(
     }
     debug!(
         registries = VANILLA_REGISTRIES.len(),
-        core_negotiated,
-        "registry data sent"
+        core_negotiated, "registry data sent"
     );
 
     // --- 5. Update Tags (complete set — never from known packs) ----------
@@ -184,12 +184,17 @@ async fn drain_until_known_packs(
             | RESOURCE_PACK_RESPONSE_PACKET_ID
             | CUSTOM_CLICK_ACTION_PACKET_ID => {}
             other => {
-                warn!(packet_id = other, "unexpected packet while awaiting known packs");
+                warn!(
+                    packet_id = other,
+                    "unexpected packet while awaiting known packs"
+                );
                 return Err(ConnectionError::Protocol(ProtocolError::InvalidPacketId));
             }
         }
     }
-    Err(ConnectionError::Protocol(ProtocolError::InvalidPacketPayload))
+    Err(ConnectionError::Protocol(
+        ProtocolError::InvalidPacketPayload,
+    ))
 }
 
 async fn drain_until_code_of_conduct(connection: &mut Connection) -> Result<(), ConnectionError> {
@@ -215,5 +220,7 @@ async fn drain_until_code_of_conduct(connection: &mut Connection) -> Result<(), 
             }
         }
     }
-    Err(ConnectionError::Protocol(ProtocolError::InvalidPacketPayload))
+    Err(ConnectionError::Protocol(
+        ProtocolError::InvalidPacketPayload,
+    ))
 }

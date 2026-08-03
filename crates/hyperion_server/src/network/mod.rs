@@ -76,9 +76,11 @@ pub async fn serve_with_listener(
 ) -> io::Result<()> {
     let connection_slots = Arc::new(Semaphore::new(config.max_connections));
     loop {
-        let permit = connection_slots.clone().acquire_owned().await.map_err(|_| {
-            io::Error::other("connection semaphore closed")
-        })?;
+        let permit = connection_slots
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| io::Error::other("connection semaphore closed"))?;
         let (stream, peer_address) = listener.accept().await?;
         let config = config.clone();
         let key_pool = key_pool.clone();

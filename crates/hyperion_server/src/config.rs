@@ -487,10 +487,7 @@ mod tests {
 
     #[test]
     fn load_creates_missing_file() {
-        let dir = std::env::temp_dir().join(format!(
-            "hyperion-config-test-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("hyperion-config-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("temp dir");
         let path = dir.join("server.properties");

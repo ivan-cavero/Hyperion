@@ -42,7 +42,12 @@ async fn silent_client_is_kicked_after_keep_alive_timeout() {
         "unexpected first packet id {}",
         keep_alive.packet_id
     );
-    client.write_packet(hyperion_protocol::SERVERBOUND_KEEP_ALIVE_PACKET_ID, &keep_alive.payload).await;
+    client
+        .write_packet(
+            hyperion_protocol::SERVERBOUND_KEEP_ALIVE_PACKET_ID,
+            &keep_alive.payload,
+        )
+        .await;
     // ...then goes silent: probes keep arriving but the kick must follow
     // once the timeout elapses.
     let disconnect = loop {
@@ -59,10 +64,10 @@ async fn silent_client_is_kicked_after_keep_alive_timeout() {
     // Play-state disconnect reason is a network NBT string tag:
     // 0x08 + u16 length + UTF-8 bytes.
     assert_eq!(disconnect.payload[0], 0x08, "NBT string tag");
-    let reason_length =
-        u16::from_be_bytes([disconnect.payload[1], disconnect.payload[2]]) as usize;
+    let reason_length = u16::from_be_bytes([disconnect.payload[1], disconnect.payload[2]]) as usize;
     assert_eq!(reason_length, disconnect.payload.len() - 3);
-    let reason = String::from_utf8(disconnect.payload[3..].to_vec()).expect("reason should be UTF-8");
+    let reason =
+        String::from_utf8(disconnect.payload[3..].to_vec()).expect("reason should be UTF-8");
     assert_eq!(reason, "Timed out");
 
     // The kick ends the session cleanly (no error to report).
