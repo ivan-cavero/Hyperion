@@ -12,6 +12,7 @@ use hyperion_protocol::{
     UPDATE_TAGS_PACKET_ID, decode_packet_data, decode_var_i32, decompress_body, encode_var_i32,
     offline_mode_uuid,
 };
+use bytes::Bytes;
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
@@ -66,7 +67,7 @@ async fn logs_in_offline_with_vanilla_uuid_and_compression() {
         decode_var_i32(&raw_success_body, 0, 5).expect("data length should decode");
     assert!(data_length > 0, "Login Success should be compressed");
     let login_success =
-        decode_packet_data(&decompress_body(&raw_success_body).expect("should decompress"))
+        decode_packet_data(Bytes::from(decompress_body(&raw_success_body).expect("should decompress")))
             .expect("should parse");
     assert_eq!(login_success.packet_id, LOGIN_SUCCESS_PACKET_ID);
     let expected_uuid = offline_mode_uuid("TestPlayer");

@@ -9,7 +9,7 @@
 
 #![allow(dead_code)]
 
-use bytes::{Buf, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use hyperion_protocol::{
     ACCEPT_CODE_OF_CONDUCT_PACKET_ID, ACKNOWLEDGE_FINISH_CONFIGURATION_PACKET_ID,
     Cfb8Stream, KNOWN_PACKS_PACKET_ID, LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, LOGIN_PACKET_ID,
@@ -328,6 +328,6 @@ impl MockClient {
         } else {
             body
         };
-        decode_packet_data(&packet_body).expect("should parse")
+        decode_packet_data(Bytes::from(packet_body)).expect("should parse")
     }
 }

@@ -69,13 +69,15 @@ pub fn split_frame(input: &[u8]) -> Result<Option<FrameSplit>, ProtocolError> {
 
 /// Decodes a packet (ID + payload) from bytes without a length prefix,
 /// as they appear after decompressing a frame body.
-pub fn decode_packet_data(input: &[u8]) -> Result<PacketFrame, ProtocolError> {
-    let (packet_id, packet_id_length) = decode_var_i32(input, 0, MAX_GENERAL_VARINT_BYTES)?;
-    let payload = Bytes::copy_from_slice(
-        input
-            .get(packet_id_length..)
-            .ok_or(ProtocolError::InvalidPacketPayload)?,
-    );
+///
+/// Takes ownership of the input as [`Bytes`] so the payload can be sliced
+/// zero-copy (O(1)) instead of copied out of a borrowed buffer.
+pub fn decode_packet_data(input: Bytes) -> Result<PacketFrame, ProtocolError> {
+    let (packet_id, packet_id_length) = decode_var_i32(&input, 0, MAX_GENERAL_VARINT_BYTES)?;
+    if packet_id_length > input.len() {
+        return Err(ProtocolError::InvalidPacketPayload);
+    }
+    let payload = input.slice(packet_id_length..);
 
     Ok(PacketFrame { packet_id, payload })
 }
@@ -85,7 +87,10 @@ pub fn decode_frame(input: &[u8]) -> Result<(PacketFrame, usize), ProtocolError>
     let split = split_frame(input)?.ok_or(ProtocolError::UnexpectedEndOfInput)?;
     let packet_bytes = &input[split.body_offset..split.total_consumed];
 
-    Ok((decode_packet_data(packet_bytes)?, split.total_consumed))
+    Ok((
+        decode_packet_data(Bytes::copy_from_slice(packet_bytes))?,
+        split.total_consumed,
+    ))
 }
 
 /// Encode an uncompressed Minecraft packet frame.

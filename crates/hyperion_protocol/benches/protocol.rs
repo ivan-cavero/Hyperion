@@ -73,7 +73,9 @@ fn read_direct(bencher: divan::Bencher) {
             .expect("frame should split")
             .expect("frame complete");
         let body = &frame[split.body_offset..split.total_consumed];
-        black_box(decode_packet_data(body).expect("packet should decode"))
+        black_box(
+            decode_packet_data(bytes::Bytes::copy_from_slice(body)).expect("packet should decode"),
+        )
     });
 }
 
@@ -93,7 +95,7 @@ fn read_compressed(bencher: divan::Bencher) {
             .expect("frame complete");
         let bytes = &frame[split.body_offset..split.total_consumed];
         let packet = decompress_body(bytes).expect("should inflate");
-        black_box(decode_packet_data(&packet).expect("packet should decode"))
+        black_box(decode_packet_data(bytes::Bytes::from(packet)).expect("packet should decode"))
     });
 }
 

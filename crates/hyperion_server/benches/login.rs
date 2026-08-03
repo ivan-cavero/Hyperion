@@ -111,7 +111,7 @@ async fn read_packet(
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?,
         None => raw_body,
     };
-    decode_packet_data(&packet_body)
+    decode_packet_data(bytes::Bytes::from(packet_body))
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 

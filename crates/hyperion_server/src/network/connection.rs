@@ -121,7 +121,7 @@ impl Connection {
             raw_body
         };
 
-        decode_packet_data(&packet_body).map_err(ConnectionError::Protocol)
+        decode_packet_data(packet_body).map_err(ConnectionError::Protocol)
     }
 
     /// Reads the next frame but gives up with [`ConnectionError::TimedOut`]
@@ -145,7 +145,13 @@ impl Connection {
         packet_id: i32,
         payload: &[u8],
     ) -> Result<(), ConnectionError> {
-        let packet_body = [encode_var_i32(packet_id), payload.to_vec()].concat();
+        // Build the packet body with a single allocation sized exactly for
+        // its contents (previously `concat` of two fresh Vecs: 3 allocations
+        // per packet on the hot path).
+        let packet_id_bytes = encode_var_i32(packet_id);
+        let mut packet_body = Vec::with_capacity(packet_id_bytes.len() + payload.len());
+        packet_body.extend_from_slice(&packet_id_bytes);
+        packet_body.extend_from_slice(payload);
         let frame_body = if let Some(threshold) = self.compression_threshold {
             compress_body(&packet_body, threshold).map_err(ConnectionError::Protocol)?
         } else {

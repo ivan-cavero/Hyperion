@@ -142,7 +142,9 @@ struct LimitedWriter {
 impl LimitedWriter {
     fn new(maximum_bytes: usize) -> Self {
         Self {
-            bytes: Vec::with_capacity(maximum_bytes),
+            // The real response is a few hundred bytes; pre-allocating the
+            // protocol maximum (98 KB) would waste memory per status probe.
+            bytes: Vec::with_capacity(512),
             maximum_bytes,
         }
     }

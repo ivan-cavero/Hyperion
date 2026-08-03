@@ -411,7 +411,7 @@ mod tests {
     #[test]
     fn finish_configuration_frame_is_valid() {
         let frame = encode_finish_configuration().unwrap();
-        let decoded = crate::decode_packet_data(&frame).unwrap();
+        let decoded = crate::decode_packet_data(frame).unwrap();
         assert_eq!(decoded.packet_id, FINISH_CONFIGURATION_PACKET_ID);
         assert!(decoded.payload.is_empty());
         let _ = encode_frame(FINISH_CONFIGURATION_PACKET_ID, &[]).unwrap();
