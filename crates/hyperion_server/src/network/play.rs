@@ -10,7 +10,8 @@ use std::time::Duration;
 use hyperion_protocol::{
     CHAT_MESSAGE_PACKET_ID, CHAT_SESSION_UPDATE_PACKET_ID, CHUNK_BATCH_FINISHED_PACKET_ID,
     CHUNK_BATCH_RECEIVED_PACKET_ID, CHUNK_BATCH_START_PACKET_ID, CLIENT_INFORMATION_PACKET_ID,
-    CLIENT_TICK_END_PACKET_ID, CONFIRM_TELEPORTATION_PACKET_ID, GAME_EVENT_PACKET_ID, GameProfile,
+    CLIENT_TICK_END_PACKET_ID, CONFIRM_TELEPORTATION_PACKET_ID, DISCONNECT_PACKET_ID,
+    GAME_EVENT_PACKET_ID, GameProfile,
     KEEP_ALIVE_PACKET_ID, LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, LOGIN_PACKET_ID, LoginPlay,
     MAX_VIEW_DISTANCE, MIN_VIEW_DISTANCE, MOVE_PLAYER_POS_PACKET_ID, MOVE_PLAYER_POS_ROT_PACKET_ID,
     MOVE_PLAYER_ROT_PACKET_ID, PLAYER_ABILITIES_PACKET_ID, PLAYER_COMMAND_PACKET_ID,
@@ -23,9 +24,9 @@ use hyperion_protocol::{
     decode_chat_message, decode_chunk_batch_received, decode_client_information,
     decode_client_tick_end, decode_confirm_teleportation, decode_keep_alive,
     decode_play_ping_request, decode_player_loaded, encode_chunk_batch_finished_payload,
-    encode_chunk_batch_start_payload, encode_empty_chunk_payload, encode_game_event_payload,
-    encode_keep_alive_payload, encode_login_payload, encode_ping_payload,
-    encode_player_abilities_payload, encode_player_info_update_payload,
+    encode_chunk_batch_start_payload, encode_disconnect_payload, encode_empty_chunk_payload,
+    encode_game_event_payload, encode_keep_alive_payload, encode_login_payload,
+    encode_ping_payload, encode_player_abilities_payload, encode_player_info_update_payload,
     encode_player_position_payload, encode_server_data_payload, encode_set_chunk_cache_center_payload,
     encode_set_chunk_cache_radius_payload, encode_set_default_spawn_position_payload,
     encode_set_simulation_distance_payload, encode_set_ticking_state_payload,
@@ -38,8 +39,6 @@ use super::configuration::{OVERWORLD_DIMENSION_TYPE_ID, PLAINS_BIOME_ID, SECTION
 use super::connection::{Connection, ConnectionError};
 use crate::config::ServerConfig;
 
-/// Keep-alive interval (vanilla uses 15 seconds).
-const KEEP_ALIVE_INTERVAL_SECONDS: u64 = 10;
 /// Game event "Start waiting for level chunks" (see Game Event, Play ID 38).
 const GAME_EVENT_START_WAITING_FOR_LEVEL_CHUNKS: u8 = 13;
 /// Creative game mode: flying in the void without fall damage.
@@ -226,9 +225,12 @@ pub(super) async fn serve_play(
 
     // Keep-alive + chat loop until the client disconnects.
     // First keep-alive after one interval, not immediately (interval() fires right away).
-    let keep_alive_period = Duration::from_secs(KEEP_ALIVE_INTERVAL_SECONDS);
+    let keep_alive_period = Duration::from_secs(config.keep_alive_interval_seconds);
+    let keep_alive_timeout = Duration::from_secs(config.keep_alive_timeout_seconds);
     let mut keep_alive = interval_at(Instant::now() + keep_alive_period, keep_alive_period);
     let mut next_keep_alive_id: i64 = 0;
+    let mut keep_alive_pending = false;
+    let mut last_keep_alive_sent_at = Instant::now();
     loop {
         tokio::select! {
             frame = connection.read_frame() => {
@@ -237,6 +239,7 @@ pub(super) async fn serve_play(
                     SERVERBOUND_KEEP_ALIVE_PACKET_ID => {
                         let id = decode_keep_alive(&frame.payload)?;
                         trace!(%username, id, "keep-alive response");
+                        keep_alive_pending = false;
                     }
                     PING_REQUEST_PACKET_ID => {
                         // Vanilla answers the latency probe immediately.
@@ -291,11 +294,31 @@ pub(super) async fn serve_play(
                 }
             }
             _ = keep_alive.tick() => {
+                if keep_alive_pending && last_keep_alive_sent_at.elapsed() > keep_alive_timeout {
+                    // Vanilla kicks clients that stay silent for two
+                    // keep-alive intervals.
+                    info!(%username, "keep-alive timed out, kicking");
+                    connection
+                        .write_frame(
+                            DISCONNECT_PACKET_ID,
+                            &encode_disconnect_payload("Timed out")?,
+                        )
+                        .await?;
+                    return Ok(());
+                }
                 next_keep_alive_id += 1;
                 let id = next_keep_alive_id;
                 connection
                     .write_frame(KEEP_ALIVE_PACKET_ID, &encode_keep_alive_payload(id))
                     .await?;
+                // The timeout clock starts with the first unanswered
+                // keep-alive and is only reset by a response, so a client
+                // that stops answering is kicked regardless of the probes
+                // sent in between.
+                if !keep_alive_pending {
+                    last_keep_alive_sent_at = Instant::now();
+                }
+                keep_alive_pending = true;
                 trace!(%username, id, "keep-alive sent");
             }
         }

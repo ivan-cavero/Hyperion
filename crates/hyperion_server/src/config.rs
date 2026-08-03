@@ -9,6 +9,12 @@ pub const DEFAULT_COMPRESSION_THRESHOLD: usize = 256;
 /// Mojang session server base URL used for online-mode verification.
 pub const DEFAULT_SESSION_SERVER_URL: &str = "https://sessionserver.mojang.com";
 
+/// Vanilla keep-alive interval: 15 seconds.
+pub const DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS: u64 = 10;
+/// Vanilla keep-alive timeout: a client that does not answer within 30
+/// seconds (two intervals) is kicked with "Timed out".
+pub const DEFAULT_KEEP_ALIVE_TIMEOUT_SECONDS: u64 = 30;
+
 /// Startup configuration of the Hyperion server.
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
@@ -27,6 +33,11 @@ pub struct ServerConfig {
     pub max_players: i32,
     /// Y level of the default spawn point.
     pub spawn_y: i32,
+    /// How often the server sends a keep-alive to each player.
+    pub keep_alive_interval_seconds: u64,
+    /// How long a player may stay silent after a keep-alive before being
+    /// kicked, mirroring vanilla's two-interval grace period.
+    pub keep_alive_timeout_seconds: u64,
 }
 
 impl Default for ServerConfig {
@@ -39,6 +50,8 @@ impl Default for ServerConfig {
             view_distance: 8,
             max_players: 20,
             spawn_y: 100,
+            keep_alive_interval_seconds: DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS,
+            keep_alive_timeout_seconds: DEFAULT_KEEP_ALIVE_TIMEOUT_SECONDS,
         }
     }
 }
