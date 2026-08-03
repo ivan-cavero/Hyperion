@@ -1,10 +1,10 @@
-//! API de plugins de Hyperion.
+//! Hyperion plugin API.
 //!
-//! Contrato estable WASM/WIT, ciclo de vida de plugins, eventos, comandos y
-//! scheduler. Plugins sandboxed por capacidades (wasmtime) + scripting Lua
-//! (MLua) para simplicidad. Fase 4 del ROADMAP.
+//! Stable WASM/WIT contract, plugin lifecycle, events, commands, and
+//! scheduler. Plugins sandboxed by capabilities (wasmtime) + Lua scripting
+//! (MLua) for simplicity. Roadmap Phase 4.
 
-/// Evento base que reciben los plugins.
+/// Base event received by plugins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
     PlayerJoin,

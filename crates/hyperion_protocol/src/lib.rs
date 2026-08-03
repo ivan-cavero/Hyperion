@@ -38,7 +38,7 @@ pub use status::{
 /// Protocol version used by Minecraft Java Edition 26.2.
 pub const SUPPORTED_PROTOCOL_VERSION: i32 = 776;
 
-/// Estado de conexión de un cliente.
+/// Client connection state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionState {
     Handshake,

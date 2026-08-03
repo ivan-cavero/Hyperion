@@ -112,7 +112,7 @@ pub fn encode_pong_response(payload: i64) -> Result<Vec<u8>, ProtocolError> {
     encode_frame(PONG_RESPONSE_PACKET_ID, &payload.to_be_bytes())
 }
 
-/// Codifica el payload de una Status Response: el String JSON acotado.
+/// Encodes the payload of a Status Response: the bounded JSON string.
 pub fn encode_status_response_payload(response: &StatusResponse) -> Result<Vec<u8>, ProtocolError> {
     let maximum_json_bytes = MAX_STATUS_RESPONSE_UTF16_UNITS
         .checked_mul(3)

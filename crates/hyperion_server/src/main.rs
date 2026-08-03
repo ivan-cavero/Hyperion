@@ -14,7 +14,7 @@ const DEFAULT_BIND_ADDRESS: &str = "0.0.0.0:25565";
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    println!("Hyperion {VERSION} — servidor de Minecraft nativo en Rust");
+    println!("Hyperion {VERSION} — native Minecraft server in Rust");
 
     let bind_address = std::env::args()
         .nth(1)

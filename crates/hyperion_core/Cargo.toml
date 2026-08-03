@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Hyperion: fundamentos (tipos, matemáticas, registries)"
+description = "Hyperion core: base types, world math, registries"
 
 [dependencies]
-# Fase 0: sin dependencias externas. Tipos base propios.
+# Phase 0: no external dependencies. Original base types.

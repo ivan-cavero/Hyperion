@@ -20,7 +20,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use uuid::Uuid;
 
-/// Umbral de compresión por defecto (como el vanilla: 256).
+/// Default compression threshold (same as vanilla: 256).
 const COMPRESSION_THRESHOLD: usize = 256;
 
 /// IDs de los paquetes clientbound de Status y Login usados aquí.
@@ -259,7 +259,7 @@ async fn serve_login(
     Ok(())
 }
 
-/// El server list que anuncia Hyperion.
+/// The server list advertised by Hyperion.
 fn default_status_response() -> StatusResponse {
     StatusResponse {
         version: StatusVersion {
@@ -325,7 +325,7 @@ mod tests {
         }
     }
 
-    /// Lee y decodifica un paquete, descomprimiendo si la conexión lo exige.
+    /// Reads and decodes a packet, decompressing if the connection requires it.
     async fn client_read_packet(
         client: &mut TcpStream,
         buffer: &mut BytesMut,
@@ -420,7 +420,7 @@ mod tests {
             .expect("client should connect");
         let mut buffer = BytesMut::new();
 
-        // Handshake con intent Login (2).
+        // Handshake with intent Login (2).
         let handshake_payload = [
             encode_var_i32(SUPPORTED_PROTOCOL_VERSION),
             encode_string("localhost"),
@@ -453,10 +453,10 @@ mod tests {
                 .expect("should parse");
         assert_eq!(login_success.packet_id, LOGIN_SUCCESS_PACKET_ID);
         assert_eq!(&login_success.payload[0..16], uuid.as_bytes());
-        assert_eq!(login_success.payload[16], 10); // longitud de "TestPlayer"
+        assert_eq!(login_success.payload[16], 10); // "TestPlayer" length
         assert_eq!(&login_success.payload[17..27], "TestPlayer".as_bytes());
-        assert_eq!(login_success.payload[27], 0); // sin propiedades
-        assert_eq!(login_success.payload.len(), 44); // uuid + nombre + count + session id
+        assert_eq!(login_success.payload[27], 0); // no properties
+        assert_eq!(login_success.payload.len(), 44); // uuid + name + count + session id
 
         // Login Acknowledged (comprimido).
         client_write_packet(&mut client, 3, &[], client_compression).await;

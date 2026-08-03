@@ -5,14 +5,14 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Hyperion: binario del servidor (red, arranque, wiring)"
+description = "Hyperion server binary: networking, startup, wiring"
 
 [[bin]]
 name = "hyperion-server"
 path = "src/main.rs"
 
 [dependencies]
-# Fase 1: tokio y el resto de la lista blanca de red.
+# Phase 1: tokio and the rest of the networking whitelist.
 hyperion_core = { path = "../hyperion_core" }
 hyperion_protocol = { path = "../hyperion_protocol" }
 tokio = { workspace = true }

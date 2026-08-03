@@ -20,7 +20,7 @@ pub const SET_COMPRESSION_PACKET_ID: i32 = 3;
 pub const LOGIN_ACKNOWLEDGED_PACKET_ID: i32 = 3;
 pub const LOGIN_DISCONNECT_PACKET_ID: i32 = 0;
 
-/// Límites del perfil (Game Profile) y del nombre de usuario.
+/// Game Profile and username limits.
 pub const MAX_USERNAME_UTF16_UNITS: usize = 16;
 pub const MAX_PROPERTIES: usize = 16;
 pub const MAX_PROPERTY_NAME_UTF16_UNITS: usize = 64;
@@ -202,7 +202,7 @@ pub fn encode_login_success_payload(success: &LoginSuccess) -> Result<Vec<u8>, P
     Ok(payload)
 }
 
-/// Codifica un Login Success completo (trama).
+/// Encodes a complete Login Success frame.
 pub fn encode_login_success(success: &LoginSuccess) -> Result<Vec<u8>, ProtocolError> {
     encode_frame(
         LOGIN_SUCCESS_PACKET_ID,
@@ -227,8 +227,8 @@ mod tests {
         crate::frame::decode_frame(frame).expect("frame should decode")
     }
 
-    /// Construye una trama Login Start tal como la enviaría un cliente,
-    /// sin validar el nombre (es el decodificador quien debe validarlo).
+    /// Builds a Login Start frame as a client would send it, without
+    /// validating the name (the decoder is responsible for that).
     fn build_login_start_frame(username: &str, uuid: Uuid) -> Vec<u8> {
         let payload = [
             encode_var_i32(username.len() as i32),

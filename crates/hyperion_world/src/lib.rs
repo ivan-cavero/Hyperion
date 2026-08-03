@@ -1,10 +1,10 @@
-//! Mundo de Hyperion.
+//! Hyperion world.
 //!
-//! Chunks, worldgen con paridad vanilla 1:1 (misma seed, mismo mundo),
-//! formato Anvil (compat) y el formato propio HCF.
-//! Fase 2 del ROADMAP.
+//! Chunks, 1:1 vanilla-parity worldgen (same seed, same world),
+//! Anvil format (compat), and the proprietary HCF format.
+//! Roadmap Phase 2.
 
-/// Semilla del mundo (u64, como en Java Edition).
+/// World seed (u64, same as Java Edition).
 pub type Seed = u64;
 
 #[cfg(test)]

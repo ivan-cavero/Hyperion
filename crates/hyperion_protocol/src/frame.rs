@@ -46,8 +46,8 @@ pub fn split_frame(input: &[u8]) -> Result<Option<(Vec<u8>, usize)>, ProtocolErr
     Ok(Some((input[length_bytes..body_end].to_vec(), body_end)))
 }
 
-/// Decodifica un paquete (ID + payload) a partir de bytes sin prefijo de
-/// longitud, tal como vienen tras descomprimir el cuerpo de una trama.
+/// Decodes a packet (ID + payload) from bytes without a length prefix,
+/// as they appear after decompressing a frame body.
 pub fn decode_packet_data(input: &[u8]) -> Result<PacketFrame, ProtocolError> {
     let (packet_id, packet_id_length) = decode_var_i32(input, 0, MAX_GENERAL_VARINT_BYTES)?;
     let payload = input
@@ -58,7 +58,7 @@ pub fn decode_packet_data(input: &[u8]) -> Result<PacketFrame, ProtocolError> {
     Ok(PacketFrame { packet_id, payload })
 }
 
-/// Decodifica una trama completa sin comprimir.
+/// Decodes a complete uncompressed frame.
 pub fn decode_frame(input: &[u8]) -> Result<(PacketFrame, usize), ProtocolError> {
     let Some((packet_bytes, consumed_bytes)) = split_frame(input)? else {
         return Err(ProtocolError::UnexpectedEndOfInput);

@@ -1,8 +1,8 @@
-//! Criptografía del protocolo: cifrado de sesión AES-128/CFB8 y RSA.
+//! Protocol cryptography: AES-128/CFB8 session encryption and RSA.
 //!
-//! Minecraft cifra el flujo de paquetes con AES-128/CFB8 usando el shared
-//! secret como clave e IV, y protege el intercambio de claves con RSA
-//! (PKCS#1 v1.5). La clave RSA es de 1024 bits y la pública se envía como
+//! Minecraft encrypts the packet stream with AES-128/CFB8 using the shared
+//! secret as both key and IV, and protects the key exchange with RSA
+//! (PKCS#1 v1.5). The RSA key is 1024 bits and the public key is sent as
 //! DER SubjectPublicKeyInfo.
 
 use aes::cipher::{Block, BlockEncrypt, KeyInit};
@@ -14,8 +14,7 @@ use sha1::{Digest, Sha1};
 
 use crate::ProtocolError;
 
-/// Tamaño del shared secret de sesión: 16 bytes que sirven a la vez de
-/// clave AES-128 y de IV.
+/// Session shared secret size: 16 bytes serving as both AES-128 key and IV.
 pub const SHARED_SECRET_LENGTH: usize = 16;
 
 /// Stream de AES-128/CFB8.
@@ -91,10 +90,10 @@ pub fn decrypt_pkcs1v15(
         .map_err(|error| ProtocolError::Crypto(error.to_string()))
 }
 
-/// Calcula el "server hash" que el cliente envía a la session server para
-/// autenticarse: SHA-1 de (server_id + shared_secret + public_key) formateado
-/// como `new BigInteger(digest).toString(16)` (hex con signo, sin ceros a la
-/// izquierda, con prefijo `-` si el bit alto está puesto).
+/// Computes the "server hash" that the client sends to the session server for
+/// authentication: SHA-1 of (server_id + shared_secret + public_key) formatted
+/// as `new BigInteger(digest).toString(16)` (signed hex, no leading zeros,
+/// `-` prefix when the high bit is set).
 pub fn server_id_hash(server_id: &str, shared_secret: &[u8], public_key: &[u8]) -> String {
     let mut hasher = Sha1::new();
     hasher.update(server_id.as_bytes());

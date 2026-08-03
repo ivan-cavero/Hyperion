@@ -24,11 +24,11 @@ pub const MAX_UNCOMPRESSED_LENGTH: usize = 8_388_608;
 
 const MAX_VARINT_BYTES: usize = 5;
 
-/// Comprime el cuerpo del paquete (ID + payload) según el threshold.
+/// Compresses the packet body (ID + payload) according to the threshold.
 ///
-/// Si el cuerpo es más pequeño que `threshold` se emite sin comprimir con
-/// `Data Length = 0`; en caso contrario se emite `Data Length` con la longitud
-/// sin comprimir seguida de los bytes zlib.
+/// If the body is smaller than `threshold` it is emitted uncompressed with
+/// `Data Length = 0`; otherwise `Data Length` is emitted with the
+/// uncompressed length followed by the zlib bytes.
 pub fn compress_body(packet_body: &[u8], threshold: usize) -> Result<Vec<u8>, ProtocolError> {
     if packet_body.len() >= threshold {
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());

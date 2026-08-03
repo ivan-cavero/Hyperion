@@ -1,13 +1,13 @@
-//! Fundamentos de Hyperion.
+//! Hyperion core types.
 //!
-//! Tipos base, matemáticas de mundo y abstracciones compartidas.
-//! Fase 0: se mantiene sin dependencias externas — todo lo que vive aquí
-//! es código propio (política: docs/DEPENDENCIES.md).
+//! Base types, world math, and shared abstractions.
+//! Phase 0: zero external dependencies — everything here is original code
+//! (policy: docs/DEPENDENCIES.md).
 
-/// Número de version de Hyperion expuesto por el binario.
+/// Hyperion version string exposed by the binary.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Punto 3D en coordenadas de bloque.
+/// A 3D block coordinate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BlockPos {
     pub x: i32,

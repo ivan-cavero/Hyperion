@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Hyperion: ABI de plugins WASM/WIT, eventos, comandos, scripting"
+description = "Hyperion plugin API: WASM/WIT ABI, events, commands, scripting"
 
 [dependencies]
-# Fase 4: se añadirán de la lista blanca (wasmtime, mlua).
+# Phase 4: will add whitelist deps (wasmtime, mlua).

@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Hyperion: chunks, worldgen 1:1, formatos de mundo"
+description = "Hyperion world: chunks, 1:1 worldgen, world formats"
 
 [dependencies]
-# Fase 2: se añadirán de la lista blanca (flate2, serde…) + FFI opcional a cubiomes (MIT).
+# Phase 2: will add whitelist deps (flate2, serde…) + optional FFI to cubiomes (MIT).

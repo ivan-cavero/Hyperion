@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Hyperion: codec de paquetes, NBT propio, multi-versión"
+description = "Hyperion protocol: packet codec, NBT, multi-version support"
 
 [dependencies]
 serde = { workspace = true }
