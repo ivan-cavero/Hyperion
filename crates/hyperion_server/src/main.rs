@@ -7,7 +7,7 @@
 //! Usage:
 //!   hyperion-server [BIND_ADDRESS] [--online-mode | --offline-mode]
 //!
-//! Log level is controlled via `RUST_LOG` (default: `hyperion=info`).
+//! Log level is controlled via `RUST_LOG` (default: `info`).
 
 use std::process::ExitCode;
 
@@ -22,16 +22,19 @@ Usage: hyperion-server [BIND_ADDRESS] [--online-mode | --offline-mode]
 
 Options:
   BIND_ADDRESS     address to listen on (default: 0.0.0.0:25565)
-  --online-mode    authenticate players against Mojang (encrypted sessions)
-  --offline-mode   allow unauthenticated players (default)
+  --online-mode    authenticate players against Mojang (encrypted sessions) (default)
+  --offline-mode   allow unauthenticated players
   --help           show this help";
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    // Default to INFO for the whole process so join/login always show up.
+    // Override with e.g. RUST_LOG=hyperion_server=debug,hyperion_protocol=warn
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("hyperion=info")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
+        .with_target(true)
         .init();
 
     info!("Hyperion {VERSION} — native Minecraft server in Rust");

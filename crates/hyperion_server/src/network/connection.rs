@@ -33,6 +33,21 @@ impl From<io::Error> for ConnectionError {
     }
 }
 
+/// Maps common "peer went away" OS errors to a clean [`ConnectionError::Disconnected`],
+/// which the accept loop treats as a silent end instead of a noisy I/O error.
+fn map_peer_closed(error: io::Error) -> ConnectionError {
+    if matches!(
+        error.kind(),
+        io::ErrorKind::ConnectionReset
+            | io::ErrorKind::ConnectionAborted
+            | io::ErrorKind::BrokenPipe
+    ) {
+        ConnectionError::Disconnected
+    } else {
+        ConnectionError::Io(error)
+    }
+}
+
 impl From<ProtocolError> for ConnectionError {
     fn from(error: ProtocolError) -> Self {
         Self::Protocol(error)
@@ -83,7 +98,12 @@ impl Connection {
                     break frame_data.freeze();
                 }
                 Ok(None) => {
-                    if self.read_and_decrypt_chunk().await? == 0 {
+                    if self
+                        .read_and_decrypt_chunk()
+                        .await
+                        .map_err(map_peer_closed)?
+                        == 0
+                    {
                         return Err(ConnectionError::Disconnected);
                     }
                 }
@@ -120,12 +140,18 @@ impl Connection {
             cipher.encrypt(&mut frame);
         }
 
-        self.stream.write_all(&frame).await?;
+        self.stream
+            .write_all(&frame)
+            .await
+            .map_err(map_peer_closed)?;
+        // Flush so the client sees each configuration step promptly (login,
+        // known packs, finish, …) instead of waiting for a large later write.
+        self.stream.flush().await.map_err(map_peer_closed)?;
         Ok(())
     }
 
     /// Reads bytes from the socket, decrypts if needed, and appends to the buffer.
-    async fn read_and_decrypt_chunk(&mut self) -> Result<usize, ConnectionError> {
+    async fn read_and_decrypt_chunk(&mut self) -> io::Result<usize> {
         let mut chunk = [0u8; 4096];
         let bytes_read = self.stream.read(&mut chunk).await?;
         if bytes_read == 0 {

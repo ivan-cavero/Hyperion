@@ -30,13 +30,14 @@ use crate::config::ServerConfig;
 use crate::key_pool::KeyPool;
 use crate::session::has_joined;
 
-/// Handles the Login flow for both online and offline modes.
+/// Handles the Login flow for both online and offline modes and returns
+/// the authenticated game profile for the play state.
 pub(super) async fn serve_login(
     connection: &mut Connection,
     config: &ServerConfig,
     peer_address: std::net::SocketAddr,
     key_pool: &KeyPool,
-) -> Result<(), ConnectionError> {
+) -> Result<GameProfile, ConnectionError> {
     let login_start_frame = connection.read_frame().await?;
     let login_start = match decode_login_start(&login_start_frame) {
         Ok(login_start) => login_start,
@@ -80,7 +81,7 @@ async fn serve_login_offline(
     connection: &mut Connection,
     login_start: &LoginStart,
     compression_threshold: usize,
-) -> Result<(), ConnectionError> {
+) -> Result<GameProfile, ConnectionError> {
     // Set Compression (not yet compressing) then enable compression.
     connection
         .write_frame(
@@ -97,12 +98,13 @@ async fn serve_login_offline(
         %profile_uuid,
         "offline profile assigned"
     );
+    let profile = GameProfile {
+        uuid: profile_uuid,
+        username: login_start.username.clone(),
+        properties: Vec::new(),
+    };
     let success = LoginSuccess {
-        profile: GameProfile {
-            uuid: profile_uuid,
-            username: login_start.username.clone(),
-            properties: Vec::new(),
-        },
+        profile: profile.clone(),
         session_id: Uuid::new_v4(),
     };
     let success_payload = encode_login_success_payload(&success)?;
@@ -115,7 +117,7 @@ async fn serve_login_offline(
     decode_login_acknowledged(&acknowledged_frame)?;
     trace!("login acknowledged");
 
-    Ok(())
+    Ok(profile)
 }
 
 /// Online-mode login: full vanilla authentication flow with encryption.
@@ -135,7 +137,7 @@ async fn serve_login_online(
     login_start: &LoginStart,
     config: &ServerConfig,
     key_pool: &KeyPool,
-) -> Result<(), ConnectionError> {
+) -> Result<GameProfile, ConnectionError> {
     let username = login_start.username.clone();
 
     // Step 1: RSA key pair and random verify token (cryptographically secure).
@@ -258,7 +260,7 @@ async fn serve_login_online(
 
     // Step 9: Login Success with the Mojang-verified profile (encrypted + compressed).
     let success = LoginSuccess {
-        profile,
+        profile: profile.clone(),
         session_id: Uuid::new_v4(),
     };
     let success_payload = encode_login_success_payload(&success)?;
@@ -271,5 +273,5 @@ async fn serve_login_online(
     decode_login_acknowledged(&acknowledged_frame)?;
     trace!(username = %username, "login acknowledged");
 
-    Ok(())
+    Ok(profile)
 }

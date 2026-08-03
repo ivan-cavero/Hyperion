@@ -4,8 +4,12 @@
 mod common;
 
 use hyperion_protocol::{
-    ENCRYPTION_REQUEST_PACKET_ID, LOGIN_DISCONNECT_PACKET_ID, LOGIN_SUCCESS_PACKET_ID,
-    SET_COMPRESSION_PACKET_ID, decode_var_i32, encode_var_i32, server_id_hash,
+    ACCEPT_CODE_OF_CONDUCT_PACKET_ID, ACKNOWLEDGE_FINISH_CONFIGURATION_PACKET_ID,
+    CODE_OF_CONDUCT_PACKET_ID, ENCRYPTION_REQUEST_PACKET_ID, FINISH_CONFIGURATION_PACKET_ID,
+    KNOWN_PACKS_PACKET_ID, LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, LOGIN_DISCONNECT_PACKET_ID,
+    LOGIN_PACKET_ID, LOGIN_SUCCESS_PACKET_ID, PLAYER_POSITION_PACKET_ID, REGISTRY_DATA_PACKET_ID,
+    SELECT_KNOWN_PACKS_PACKET_ID, SET_COMPRESSION_PACKET_ID, UPDATE_ENABLED_FEATURES_PACKET_ID,
+    UPDATE_TAGS_PACKET_ID, decode_var_i32, encode_var_i32, server_id_hash,
 };
 use rand::RngCore;
 use rand::rngs::OsRng;
@@ -117,14 +121,82 @@ async fn logs_in_online_with_encryption_and_session_verification() {
     // 16 (uuid) + 6 (name) + 1 (count) + 36 (property) + 16 (session id).
     assert_eq!(login_success.payload.len(), 75);
 
-    // Login Acknowledged (encrypted + compressed).
+    // Login Acknowledged (encrypted + compressed): the client enters Configuration.
     client.write_packet(3, &[]).await;
 
+    // --- Configuration state (vanilla order, encrypted + compressed) ---
+    let features = client.read_packet().await;
+    assert_eq!(features.packet_id, UPDATE_ENABLED_FEATURES_PACKET_ID);
+    let select = client.read_packet().await;
+    assert_eq!(select.packet_id, SELECT_KNOWN_PACKS_PACKET_ID);
+    let known_packs_payload = [
+        encode_var_i32(1).to_vec(),
+        common::encode_string("minecraft"),
+        common::encode_string("core"),
+        common::encode_string("26.2"),
+    ]
+    .concat();
+    client
+        .write_packet(KNOWN_PACKS_PACKET_ID, &known_packs_payload)
+        .await;
+    let mut registry_packets = 0usize;
+    let mut saw_tags = false;
+    for _ in 0..64 {
+        let packet = client.read_packet().await;
+        if packet.packet_id == UPDATE_TAGS_PACKET_ID {
+            saw_tags = true;
+            break;
+        }
+        assert_eq!(packet.packet_id, REGISTRY_DATA_PACKET_ID);
+        registry_packets += 1;
+    }
+    assert!(
+        registry_packets >= 20,
+        "expected full synchronized registry set, got {registry_packets}"
+    );
+    assert!(saw_tags, "update_tags never arrived");
+    let conduct = client.read_packet().await;
+    assert_eq!(conduct.packet_id, CODE_OF_CONDUCT_PACKET_ID);
+    let mut offset = 0;
+    assert_eq!(
+        read_string(&conduct.payload, &mut offset),
+        "https://aka.ms/MinecraftCodeOfConduct"
+    );
+    assert_eq!(offset, conduct.payload.len());
+    client
+        .write_packet(ACCEPT_CODE_OF_CONDUCT_PACKET_ID, &[])
+        .await;
+    let finish = client.read_packet().await;
+    assert_eq!(finish.packet_id, FINISH_CONFIGURATION_PACKET_ID);
+    client
+        .write_packet(ACKNOWLEDGE_FINISH_CONFIGURATION_PACKET_ID, &[])
+        .await;
+
+    // --- Play state: the spawn sequence ---
+    let mut saw_login = false;
+    let mut saw_chunk = false;
+    for _ in 0..15 {
+        let packet = client.read_packet().await;
+        if packet.packet_id == LOGIN_PACKET_ID {
+            saw_login = true;
+        }
+        if packet.packet_id == LEVEL_CHUNK_WITH_LIGHT_PACKET_ID {
+            saw_chunk = true;
+        }
+        if packet.packet_id == PLAYER_POSITION_PACKET_ID {
+            break;
+        }
+    }
+    assert!(saw_login, "spawn sequence must include Login (play)");
+    assert!(saw_chunk, "spawn sequence must include the spawn chunk");
+
+    // Closing the client ends the keep-alive/chat loop cleanly.
     drop(client);
-    server_task
+    let result = server_task
         .await
         .expect("server task should finish")
-        .expect("connection should end cleanly");
+        .expect_err("disconnect must be reported after the client closes");
+    assert!(matches!(result, ConnectionError::Disconnected));
 }
 
 /// When the session server has no session for the player (204), the

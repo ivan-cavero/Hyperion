@@ -6,8 +6,11 @@
 //! shared-secret exchange via RSA, AES/CFB8 activation, and Mojang
 //! session-server verification.
 
+pub(crate) mod configuration;
 pub(crate) mod connection;
+mod join_data;
 mod login;
+mod play;
 mod status;
 
 use std::io;
@@ -15,13 +18,15 @@ use std::net::SocketAddr;
 
 use hyperion_protocol::{HandshakeIntent, decode_handshake};
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 pub use self::connection::ConnectionError;
 pub use self::status::{PONG_RESPONSE_PACKET_ID, STATUS_RESPONSE_PACKET_ID};
 
+use self::configuration::serve_configuration;
 use self::connection::Connection;
 use self::login::serve_login;
+use self::play::serve_play;
 use self::status::serve_status;
 use crate::config::ServerConfig;
 use crate::key_pool::KeyPool;
@@ -53,18 +58,12 @@ pub async fn serve(config: ServerConfig) -> io::Result<()> {
         let config = config.clone();
         let key_pool = key_pool.clone();
         tokio::spawn(async move {
-            if let Err(error) = handle_connection(stream, peer_address, config, &key_pool).await {
-                match error {
-                    ConnectionError::Disconnected => {}
-                    ConnectionError::Io(io_error) => {
-                        warn!(%peer_address, %io_error, "connection I/O error");
-                    }
-                    ConnectionError::Protocol(protocol_error) => {
-                        warn!(%peer_address, %protocol_error, "protocol violation");
-                    }
-                    ConnectionError::Auth(reason) => {
-                        warn!(%peer_address, %reason, "authentication failed");
-                    }
+            // Every failure is logged with stage context by
+            // `handle_connection`; this line only marks task completion.
+            match handle_connection(stream, peer_address, config, &key_pool).await {
+                Ok(()) => debug!(%peer_address, "connection closed"),
+                Err(error) => {
+                    debug!(%peer_address, ?error, "connection task ended with an error (logged above)");
                 }
             }
         });
@@ -72,6 +71,12 @@ pub async fn serve(config: ServerConfig) -> io::Result<()> {
 }
 
 /// Handles a single connection: Handshake then the chosen intent flow.
+///
+/// Every failure is logged here — with the stage in which it happened and the
+/// player name when known — so a broken login shows up in the server console
+/// with enough context to debug it. `ConnectionError::Disconnected` is not
+/// silent: during Configuration it is almost always the client rejecting a
+/// packet we sent (registry data, tags, ...) and closing the connection.
 pub async fn handle_connection(
     stream: TcpStream,
     peer_address: SocketAddr,
@@ -81,8 +86,18 @@ pub async fn handle_connection(
     let mut connection = Connection::new(stream);
     debug!(%peer_address, "connection accepted");
 
-    let handshake_frame = connection.read_frame().await?;
-    let handshake = decode_handshake(&handshake_frame)?;
+    let handshake_frame = connection
+        .read_frame()
+        .await
+        .map_err(|error| fail("handshake", &peer_address, None, error))?;
+    let handshake = decode_handshake(&handshake_frame).map_err(|error| {
+        fail(
+            "handshake",
+            &peer_address,
+            None,
+            ConnectionError::Protocol(error),
+        )
+    })?;
     debug!(
         %peer_address,
         intent = ?handshake.intent,
@@ -92,9 +107,21 @@ pub async fn handle_connection(
     );
 
     match handshake.intent {
-        HandshakeIntent::Status => serve_status(&mut connection).await,
+        HandshakeIntent::Status => match serve_status(&mut connection).await {
+            Ok(()) => Ok(()),
+            Err(error) => Err(fail("status", &peer_address, None, error)),
+        },
         HandshakeIntent::Login => {
-            serve_login(&mut connection, &config, peer_address, key_pool).await
+            let profile = serve_login(&mut connection, &config, peer_address, key_pool)
+                .await
+                .map_err(|error| fail("login", &peer_address, None, error))?;
+            let username = profile.username.clone();
+            serve_configuration(&mut connection, &config)
+                .await
+                .map_err(|error| fail("configuration", &peer_address, Some(&username), error))?;
+            serve_play(&mut connection, profile, &config)
+                .await
+                .map_err(|error| fail("play", &peer_address, Some(&username), error))
         }
         // Transfer arrives in a later milestone.
         HandshakeIntent::Transfer => {
@@ -102,4 +129,63 @@ pub async fn handle_connection(
             Ok(())
         }
     }
+}
+
+/// Logs a connection failure with the stage in which it happened and returns
+/// the error unchanged. This is the single place connection errors are
+/// surfaced to the console.
+fn fail(
+    stage: &'static str,
+    peer_address: &SocketAddr,
+    username: Option<&str>,
+    error: ConnectionError,
+) -> ConnectionError {
+    let who = username.unwrap_or("<anonymous>");
+    match &error {
+        ConnectionError::Disconnected => match stage {
+            // The client closed TCP without an error packet. During the join
+            // sequence this is usually the client rejecting something we sent
+            // (registry data, feature flags, chunks...) and disconnecting from
+            // its side — the reason appears in the client's own error screen.
+            "configuration" => warn!(
+                %peer_address,
+                username = who,
+                "client disconnected during configuration — the client likely rejected a packet we sent; check the client's error message"
+            ),
+            // A normal quit: the player closed the game.
+            "play" => info!(
+                %peer_address,
+                username = who,
+                "player left the game"
+            ),
+            _ => debug!(
+                %peer_address,
+                username = who,
+                stage,
+                "client disconnected"
+            ),
+        },
+        ConnectionError::Io(io_error) => error!(
+            %peer_address,
+            username = who,
+            stage,
+            %io_error,
+            "connection I/O error"
+        ),
+        ConnectionError::Protocol(protocol_error) => error!(
+            %peer_address,
+            username = who,
+            stage,
+            %protocol_error,
+            "connection failed: protocol error"
+        ),
+        ConnectionError::Auth(reason) => warn!(
+            %peer_address,
+            username = who,
+            stage,
+            %reason,
+            "connection failed: authentication error"
+        ),
+    }
+    error
 }

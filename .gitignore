@@ -20,3 +20,13 @@ Thumbs.db
 *.log
 server.properties
 world/
+
+# Local Minecraft reference jars / extracts (regenerate via tools/mc-ref)
+tools/mc-ref/*.jar
+tools/mc-ref/extract/
+tools/mc-ref/generated/
+tools/mc-ref/datagen/
+tools/mc-ref/classes/
+# Side-effect of running the Mojang data generator / bundler from the repo root
+/libraries/
+/versions/

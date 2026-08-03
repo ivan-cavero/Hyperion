@@ -139,6 +139,65 @@ pub(crate) fn encode_bytes(value: &[u8], maximum_length: usize) -> Result<Vec<u8
     Ok([encode_var_i32(value_length), value.to_vec()].concat())
 }
 
+pub fn encode_var_i64(value: i64) -> Vec<u8> {
+    let mut buffer = [0u8; 10];
+    let mut remaining_value = value as u64;
+    let mut index = 0;
+
+    loop {
+        let byte = (remaining_value as u8) & 0x7f;
+        remaining_value >>= 7;
+        if remaining_value == 0 {
+            buffer[index] = byte;
+            index += 1;
+            break;
+        } else {
+            buffer[index] = byte | 0x80;
+            index += 1;
+        }
+    }
+
+    buffer[..index].to_vec()
+}
+
+#[allow(dead_code)] // used by hyperion_server
+pub(crate) fn encode_i32(value: i32) -> Vec<u8> {
+    value.to_be_bytes().to_vec()
+}
+
+#[allow(dead_code)] // used by hyperion_server
+pub(crate) fn encode_i64(value: i64) -> Vec<u8> {
+    value.to_be_bytes().to_vec()
+}
+
+#[allow(dead_code)] // used by hyperion_server
+pub(crate) fn encode_f32(value: f32) -> Vec<u8> {
+    value.to_be_bytes().to_vec()
+}
+
+#[allow(dead_code)] // used by hyperion_server
+pub(crate) fn encode_f64(value: f64) -> Vec<u8> {
+    value.to_be_bytes().to_vec()
+}
+
+#[allow(dead_code)] // used by hyperion_server
+pub(crate) fn encode_u16(value: u16) -> Vec<u8> {
+    value.to_be_bytes().to_vec()
+}
+
+#[allow(dead_code)] // used by hyperion_server
+pub(crate) fn encode_byte(value: i8) -> Vec<u8> {
+    vec![value as u8]
+}
+
+/// Encodes a block position: x in the 26 MSBs, z in the middle 26 bits,
+/// y in the 12 LSBs.
+pub(crate) fn encode_position(x: i32, y: i32, z: i32) -> Vec<u8> {
+    let encoded = ((i64::from(x) & 0x3ff_ffff) << 38)
+        | ((i64::from(z) & 0x3ff_ffff) << 12)
+        | (i64::from(y) & 0xfff);
+    encoded.to_be_bytes().to_vec()
+}
 pub(crate) fn encode_uuid(uuid: Uuid) -> Vec<u8> {
     uuid.as_bytes().to_vec()
 }
@@ -245,6 +304,100 @@ impl<'input> PacketCursor<'input> {
         Ok(bytes.to_vec())
     }
 
+    pub(crate) fn read_bool(&mut self) -> Result<bool, ProtocolError> {
+        match self.read_u8()? {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err(ProtocolError::InvalidPacketPayload),
+        }
+    }
+
+    pub(crate) fn read_u8(&mut self) -> Result<u8, ProtocolError> {
+        let value = *self
+            .input
+            .get(self.offset)
+            .ok_or(ProtocolError::UnexpectedEndOfInput)?;
+        self.offset += 1;
+        Ok(value)
+    }
+
+    pub(crate) fn read_i8(&mut self) -> Result<i8, ProtocolError> {
+        Ok(self.read_u8()? as i8)
+    }
+
+    pub(crate) fn read_i64(&mut self) -> Result<i64, ProtocolError> {
+        let end_offset = self
+            .offset
+            .checked_add(8)
+            .ok_or(ProtocolError::InvalidPacketPayload)?;
+        let value_bytes = self
+            .input
+            .get(self.offset..end_offset)
+            .ok_or(ProtocolError::UnexpectedEndOfInput)?;
+        let value_bytes: [u8; 8] = value_bytes
+            .try_into()
+            .map_err(|_| ProtocolError::InvalidPacketPayload)?;
+
+        self.offset = end_offset;
+        Ok(i64::from_be_bytes(value_bytes))
+    }
+
+    pub(crate) fn read_f32(&mut self) -> Result<f32, ProtocolError> {
+        let end_offset = self
+            .offset
+            .checked_add(4)
+            .ok_or(ProtocolError::InvalidPacketPayload)?;
+        let value_bytes = self
+            .input
+            .get(self.offset..end_offset)
+            .ok_or(ProtocolError::UnexpectedEndOfInput)?;
+        let value_bytes: [u8; 4] = value_bytes
+            .try_into()
+            .map_err(|_| ProtocolError::InvalidPacketPayload)?;
+
+        self.offset = end_offset;
+        Ok(f32::from_be_bytes(value_bytes))
+    }
+
+    pub(crate) fn read_f64(&mut self) -> Result<f64, ProtocolError> {
+        let end_offset = self
+            .offset
+            .checked_add(8)
+            .ok_or(ProtocolError::InvalidPacketPayload)?;
+        let value_bytes = self
+            .input
+            .get(self.offset..end_offset)
+            .ok_or(ProtocolError::UnexpectedEndOfInput)?;
+        let value_bytes: [u8; 8] = value_bytes
+            .try_into()
+            .map_err(|_| ProtocolError::InvalidPacketPayload)?;
+
+        self.offset = end_offset;
+        Ok(f64::from_be_bytes(value_bytes))
+    }
+
+    #[allow(dead_code)] // used by hyperion_server
+    pub(crate) fn read_position(&mut self) -> Result<(i32, i32, i32), ProtocolError> {
+        let value = self.read_i64()?;
+        let x = (value >> 38) as i32;
+        let y = (value << 52 >> 52) as i32;
+        let z = (value << 26 >> 38) as i32;
+        Ok((x, y, z))
+    }
+
+    pub(crate) fn read_fixed_bytes(&mut self, length: usize) -> Result<Vec<u8>, ProtocolError> {
+        let end_offset = self
+            .offset
+            .checked_add(length)
+            .ok_or(ProtocolError::InvalidPacketPayload)?;
+        let bytes = self
+            .input
+            .get(self.offset..end_offset)
+            .ok_or(ProtocolError::UnexpectedEndOfInput)?;
+
+        self.offset = end_offset;
+        Ok(bytes.to_vec())
+    }
     pub(crate) fn finish(&self) -> Result<(), ProtocolError> {
         if self.offset == self.input.len() {
             Ok(())
@@ -254,6 +407,112 @@ impl<'input> PacketCursor<'input> {
     }
 }
 
+/// Buffered writer for building protocol payloads field by field.
+///
+/// Used by the Configuration and Play codecs, where packets contain many
+/// heterogeneous fields (numbers, strings, positions, nested data).
+#[derive(Debug, Default)]
+pub(crate) struct ByteWriter {
+    buffer: Vec<u8>,
+}
+
+impl ByteWriter {
+    pub(crate) const fn new() -> Self {
+        Self { buffer: Vec::new() }
+    }
+
+    pub(crate) fn with_capacity(capacity: usize) -> Self {
+        Self {
+            buffer: Vec::with_capacity(capacity),
+        }
+    }
+
+    pub(crate) fn into_bytes(self) -> Vec<u8> {
+        self.buffer
+    }
+
+    #[allow(dead_code)] // used by hyperion_server
+    pub(crate) fn len(&self) -> usize {
+        self.buffer.len()
+    }
+
+    #[allow(dead_code)] // used by hyperion_server
+    pub(crate) fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
+
+    pub(crate) fn push_var_i32(&mut self, value: i32) {
+        self.buffer.extend_from_slice(&encode_var_i32(value));
+    }
+
+    pub(crate) fn push_var_i64(&mut self, value: i64) {
+        self.buffer.extend_from_slice(&encode_var_i64(value));
+    }
+
+    pub(crate) fn push_i32(&mut self, value: i32) {
+        self.buffer.extend_from_slice(&value.to_be_bytes());
+    }
+
+    pub(crate) fn push_i64(&mut self, value: i64) {
+        self.buffer.extend_from_slice(&value.to_be_bytes());
+    }
+
+    pub(crate) fn push_u16(&mut self, value: u16) {
+        self.buffer.extend_from_slice(&value.to_be_bytes());
+    }
+
+    pub(crate) fn push_u32(&mut self, value: u32) {
+        self.buffer.extend_from_slice(&value.to_be_bytes());
+    }
+
+    pub(crate) fn push_f32(&mut self, value: f32) {
+        self.buffer.extend_from_slice(&value.to_be_bytes());
+    }
+
+    pub(crate) fn push_f64(&mut self, value: f64) {
+        self.buffer.extend_from_slice(&value.to_be_bytes());
+    }
+
+    pub(crate) fn push_bool(&mut self, value: bool) {
+        self.buffer.push(u8::from(value));
+    }
+
+    pub(crate) fn push_u8(&mut self, value: u8) {
+        self.buffer.push(value);
+    }
+
+    pub(crate) fn push_byte(&mut self, value: i8) {
+        self.buffer.push(value as u8);
+    }
+
+    pub(crate) fn push_bytes(&mut self, bytes: &[u8]) {
+        self.buffer.extend_from_slice(bytes);
+    }
+
+    pub(crate) fn push_position(&mut self, x: i32, y: i32, z: i32) {
+        self.buffer.extend_from_slice(&encode_position(x, y, z));
+    }
+
+    pub(crate) fn push_string(
+        &mut self,
+        value: &str,
+        maximum_utf16_units: usize,
+    ) -> Result<(), ProtocolError> {
+        let encoded = encode_string(value, maximum_utf16_units)?;
+        self.buffer.extend_from_slice(&encoded);
+        Ok(())
+    }
+
+    pub(crate) fn push_byte_array(
+        &mut self,
+        value: &[u8],
+        maximum_length: usize,
+    ) -> Result<(), ProtocolError> {
+        let encoded = encode_bytes(value, maximum_length)?;
+        self.buffer.extend_from_slice(&encoded);
+        Ok(())
+    }
+}
 fn encode_unsigned_var_i32(value: u32) -> Vec<u8> {
     let mut buffer = [0u8; MAX_GENERAL_VARINT_BYTES];
     let mut remaining_value = value;

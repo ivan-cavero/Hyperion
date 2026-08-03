@@ -1,8 +1,11 @@
 # tools/
 
-Herramientas de desarrollo (se completan en Fases 1–2):
+| Tool | Estado | Uso |
+|---|---|---|
+| [`mc-ref/`](mc-ref/README.md) | listo | Genera registries/tags/NBT de join desde el server.jar 26.2 |
+| `extract` | pendiente (Fase 2) | Pipeline genérico de datos Mojang → JSON versionado |
+| `codegen` | pendiente (Fase 2) | structs/coders Rust desde JSON |
+| `packet_inspector` | pendiente | Depurar tráfico real vs cliente vanilla |
+| `stresser` | pendiente | Simular jugadores para benchmarks |
 
-- `extract` — extrae datos de Mojang (registries, protocolo, biomes) a JSON versionado.
-- `codegen` — genera código Rust (structs, coders) desde los JSON extraídos.
-- `packet_inspector` — depura tráfico real contra un cliente vanilla.
-- `stresser` — simula jugadores para benchmarks.
+Ver `mc-ref/README.md` para regenerar `join_data/generated.rs` y `registry_nbt.bin`.
