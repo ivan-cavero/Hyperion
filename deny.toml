@@ -9,6 +9,9 @@ allow = [
     "ISC",
     "Zlib",
     "Unicode-3.0",
+    # CA root store shipped by webpki-roots (reqwest → hyper-rustls → rustls).
+    # Community Data License Agreement Permissive 2.0 — data-only, free use.
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
 

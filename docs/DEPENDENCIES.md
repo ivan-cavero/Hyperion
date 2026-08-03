@@ -29,6 +29,7 @@
 | `tracing-subscriber` | Logging runtime + `RUST_LOG` (env-filter) | MIT | Tokio team | ✅ active | Phase 1 |
 | `reqwest` (with `rustls-tls`, no default-tls) | HTTP client for Mojang session server | MIT/Apache-2.0 | Hyper (Sean McArthur et al.) | ✅ active | Phase 1 |
 | `rustls` (transitive) | Pure-Rust TLS — avoids openssl/native-tls | MIT/Apache-2.0 | rustls team | ✅ active | Phase 1 |
+| `webpki-roots` (transitive via rustls) | Mozilla CA root store for TLS | **CDLA-Permissive-2.0** | rustls / webpki-roots | ✅ active | Phase 1 |
 | `libfuzzer-sys` | libFuzzer engine, only in `crates/hyperion_protocol/fuzz/` | Apache-2.0/MIT | Rust Fuzz project | ✅ active | Phase 1 |
 | `rayon` | Data parallelism | MIT/Apache-2.0 | Rayon team | ✅ active | Phase 3 |
 | `crossbeam` | Concurrency utilities | MIT/Apache-2.0 | Crossbeam team | ✅ active | Phase 3 |
