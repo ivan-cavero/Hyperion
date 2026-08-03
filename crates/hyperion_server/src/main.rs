@@ -1,7 +1,11 @@
-//! Hyperion server — punto de entrada.
+//! Hyperion server — entry point.
 //!
-//! Fase 1: arranca la red async (tokio) y atiende el flujo Handshake → Status.
-//! El argumento opcional es la dirección de bind (por defecto 0.0.0.0:25565).
+//! Phase 1: starts the async network (tokio) and handles the Handshake →
+//! Status flow. Supports both online-mode (Mojang authentication) and
+//! offline-mode (unauthenticated).
+//!
+//! Usage:
+//!   hyperion-server [BIND_ADDRESS] [--online-mode]
 
 mod network;
 
@@ -9,21 +13,33 @@ use std::process::ExitCode;
 
 use hyperion_core::VERSION;
 
-/// Dirección de bind por defecto.
+/// Default bind address.
 const DEFAULT_BIND_ADDRESS: &str = "0.0.0.0:25565";
 
 #[tokio::main]
 async fn main() -> ExitCode {
     println!("Hyperion {VERSION} — native Minecraft server in Rust");
 
-    let bind_address = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| DEFAULT_BIND_ADDRESS.to_owned());
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut bind_address = DEFAULT_BIND_ADDRESS.to_owned();
+    let mut online_mode = false;
 
-    match network::serve(&bind_address).await {
+    for arg in &args {
+        match arg.as_str() {
+            "--online-mode" => online_mode = true,
+            "--offline-mode" => online_mode = false,
+            _ if !arg.starts_with('-') => bind_address = arg.clone(),
+            unknown => {
+                eprintln!("Unknown argument: {unknown}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
+    match network::serve(&bind_address, online_mode).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("El servidor no pudo arrancar: {error}");
+            eprintln!("Server failed to start: {error}");
             ExitCode::FAILURE
         }
     }
