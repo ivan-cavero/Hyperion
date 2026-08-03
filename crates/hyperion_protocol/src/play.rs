@@ -548,21 +548,27 @@ pub fn encode_empty_chunk_payload(
 /// (ID 0), returning the teleport ID.
 pub fn decode_confirm_teleportation(payload: &[u8]) -> Result<i32, ProtocolError> {
     let mut cursor = PacketCursor::new(payload);
-    cursor.read_var_i32()
+    let teleport_id = cursor.read_var_i32()?;
+    cursor.finish()?;
+    Ok(teleport_id)
 }
 
 /// Decodes the payload of the serverbound Play `keep_alive` packet (ID 28),
 /// returning the keep-alive ID.
 pub fn decode_keep_alive(payload: &[u8]) -> Result<i64, ProtocolError> {
     let mut cursor = PacketCursor::new(payload);
-    cursor.read_i64()
+    let id = cursor.read_i64()?;
+    cursor.finish()?;
+    Ok(id)
 }
 
 /// Decodes the payload of the serverbound Play `ping_request` packet (ID 38),
 /// returning the payload to echo back in the clientbound `ping` packet.
 pub fn decode_ping_request(payload: &[u8]) -> Result<i64, ProtocolError> {
     let mut cursor = PacketCursor::new(payload);
-    cursor.read_i64()
+    let id = cursor.read_i64()?;
+    cursor.finish()?;
+    Ok(id)
 }
 
 /// Decodes the payload of the serverbound `chat` packet (ID 9).
@@ -582,6 +588,7 @@ pub fn decode_chat_message(payload: &[u8]) -> Result<ChatMessage, ProtocolError>
         .try_into()
         .map_err(|_| ProtocolError::InvalidPacketPayload)?;
     let checksum = cursor.read_i8()?;
+    cursor.finish()?;
     Ok(ChatMessage {
         message,
         timestamp,
@@ -695,6 +702,44 @@ mod tests {
             decode_confirm_teleportation(&frame.payload).expect("decodes"),
             42
         );
+    }
+
+    #[test]
+    fn decoders_reject_payloads_with_trailing_bytes() {
+        // A strict decoder must refuse any payload that does not match the
+        // packet's exact field layout, like vanilla does.
+        let keep_alive = encode_keep_alive_payload(7).into_iter().chain([0xff]).collect::<Vec<_>>();
+        assert!(matches!(
+            decode_keep_alive(&keep_alive),
+            Err(ProtocolError::InvalidPacketPayload)
+        ));
+
+        let ping = encode_ping_payload(7).into_iter().chain([0xff]).collect::<Vec<_>>();
+        assert!(matches!(
+            decode_ping_request(&ping),
+            Err(ProtocolError::InvalidPacketPayload)
+        ));
+
+        let teleport = [0x2a, 0xff]; // varint 42 + one stray byte
+        assert!(matches!(
+            decode_confirm_teleportation(&teleport),
+            Err(ProtocolError::InvalidPacketPayload)
+        ));
+
+        // Valid chat body (message "hi" + 4 i64-ish fields) + one stray byte.
+        let mut writer = ByteWriter::new();
+        writer.push_string("hi", 256).expect("string fits");
+        writer.push_i64(1);
+        writer.push_i64(2);
+        writer.push_bool(false);
+        writer.push_var_i32(0);
+        writer.push_bytes(&[0, 0, 0, 0]); // acknowledged + checksum
+        let mut chat = writer.into_bytes();
+        chat.push(0x99);
+        assert!(matches!(
+            decode_chat_message(&chat),
+            Err(ProtocolError::InvalidPacketPayload)
+        ));
     }
 
     #[test]
