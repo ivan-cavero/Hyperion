@@ -1,31 +1,30 @@
-# ADR 0001 — Fuente del worldgen (paridad vanilla 1:1)
+# ADR 0001 — Worldgen source (1:1 vanilla parity)
 
-- Estado: **Propuesta** (decisión abierta — límite: Fase 2 del ROADMAP)
-- Fecha: 2026-08-02
+- Status: **Proposed** (open decision — deadline: Phase 2 of the ROADMAP)
+- Date: 2026-08-02
 
-## Contexto
+## Context
 
-Hyperion promete "misma seed, mismo mundo" (1:1 con el servidor vanilla de Mojang).
-Implementar la generación completa a nivel de bloque (ruido, biomas, superficie,
-cuevas, minerales, árboles, estructuras/jigsaw) es el componente de mayor riesgo
-del proyecto: el mejor servidor nativo (Pumpkin) lleva 2 años y aún no completa
-las estructuras.
+Hyperion promises "same seed, same world" (1:1 with Mojang's vanilla server).
+Implementing full block-level generation (noise, biomes, surface, caves, ores,
+trees, structures/jigsaw) is the highest-risk component of the project: the best
+native server (Pumpkin) has spent 2 years and still has not completed structures.
 
-## Opciones
+## Options
 
-| Opción | Descripción | Pros | Contras |
+| Option | Description | Pros | Cons |
 |--------|-------------|------|---------|
-| **A. Núcleo propio** | Implementar todo el generador desde cero en Rust | Control total, cero deuda ajena, aprendizaje máximo | Años de trabajo; riesgo alto |
-| **B. Referencia cubiomes** | Usar `cubiomes` (C, **MIT**) vía FFI para biomas/estructuras + núcleo de terreno propio | Paridad de biomas probada, MIT compatible | FFI `unsafe`; cubiomes no cubre bloque a bloque; capa de terreno sigue siendo propia |
-| **C. Heredar de Pumpkin** | Portar/heredar el generador de Pumpkin (Rust, 1:1 reclamado) | Menos trabajo; paridad ya parcial | **GPLv3** — fuerza licencia GPL a todo el proyecto; depende de su roadmap |
+| **A. Own core** | Implement the full generator from scratch in Rust | Full control, zero third-party debt, maximum learning | Years of work; high risk |
+| **B. cubiomes reference** | Use `cubiomes` (C, **MIT**) via FFI for biomes/structures + own terrain core | Proven biome parity, MIT-compatible | FFI `unsafe`; cubiomes does not cover block-by-block; terrain layer remains own |
+| **C. Inherit from Pumpkin** | Port/inherit Pumpkin's generator (Rust, claimed 1:1) | Less work; partial parity already | **GPLv3** — forces GPL license on the whole project; depends on their roadmap |
 
-## Decisión (pendiente)
+## Decision (pending)
 
-Se evaluará A vs B como primeras opciones. C solo si el proyecto pasa a GPL.
-Criterio de cierre: decidir al inicio de Fase 2 con un PoC de cada opción
-(chunk de referencia vs. vanilla, misma seed).
+A vs B will be evaluated as the first options. C only if the project moves to GPL.
+Closing criterion: decide at the start of Phase 2 with a PoC of each option
+(reference chunk vs. vanilla, same seed).
 
-## Consecuencias
+## Consequences
 
-- El ADR 0004 (region ticking) asume generación paralela de chunks → la opción
-  elegida debe ser thread-safe y paralelizable.
+- ADR 0004 (region ticking) assumes parallel chunk generation → the chosen
+  option must be thread-safe and parallelizable.

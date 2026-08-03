@@ -1,40 +1,40 @@
-# ADR 0006 — Compatibilidad con plugins Java: estrategia (TeaVM → JVM)
+# ADR 0006 — Java plugin compatibility: strategy (TeaVM → JVM)
 
-- Estado: **Aceptada**
-- Fecha: 2026-08-02
-- Relación: reevalúa y amplía ADR 0003.
+- Status: **Accepted**
+- Date: 2026-08-02
+- Relation: reevaluates and extends ADR 0003.
 
-## Contexto
+## Context
 
-Se quiere retrocompatibilidad futura con plugins Bukkit/Spigot/Paper y mods.
-El ADR 0003 descartó la JVM para el **núcleo**. Esta ADR decide la estrategia
-para una **capa opt-in** de compatibilidad, sin comprometer el producto.
+Future retrocompatibility with Bukkit/Spigot/Paper plugins and mods is desired.
+ADR 0003 discarded the JVM for the **core**. This ADR decides the strategy
+for an **opt-in** compatibility layer, without compromising the product.
 
-## Decisión
+## Decision
 
-Dos vías, en orden de prioridad (detalle: docs/COMPATIBILITY.md):
+Two paths, in priority order (detail: docs/COMPATIBILITY.md):
 
-1. **Vía C (objetivo)**: compilar plugins Java a WebAssembly con TeaVM y
-   ejecutarlos en el runtime WASM de Hyperion (`wasmtime`). La API Bukkit se
-   reimplementa como host imports del WASM. Investigación con PoC y criterio
-   go/no-go.
-2. **Vía B (plan B)**: módulo opt-in `hyperion_compat` con JVM embebida
-   (`jni-rs`) + subconjunto de la API Bukkit en Rust. Solo plugins "API-only".
+1. **Path C (goal)**: compile Java plugins to WebAssembly with TeaVM and
+   run them in Hyperion's WASM runtime (`wasmtime`). The Bukkit API is
+   reimplemented as WASM host imports. Research with PoC and go/no-go
+   criterion.
+2. **Path B (plan B)**: opt-in module `hyperion_compat` with embedded JVM
+   (`jni-rs`) + Bukkit API subset in Rust. Only "API-only" plugins.
 
-**Descartado por decisión del equipo**: la vía de coexistencia por proxy
-(servidores Java detrás de un proxy). No aporta valor al producto y no se
-contempla.
+**Discarded by team decision**: the proxy coexistence path
+(Java servers behind a proxy). It adds no product value and is not
+contemplated.
 
-Mods: client-side gratis; server-side solo portes manuales a la API nativa.
+Mods: client-side free; server-side only manual ports to the native API.
 
-## Consecuencias
+## Consequences
 
-- `jni-rs` pasa a **opcional** en la lista blanca: solo dentro de
-  `hyperion_compat` (Vía B), nunca en el núcleo (ADR 0003 se mantiene para el núcleo).
-- TeaVM es una **herramienta externa** (compilador Java), no un crate runtime;
-  se audita aparte (ver docs/DEPENDENCIES.md).
-- La compatibilidad es **no prioritaria y opt-in**; el rendimiento nativo no se sacrifica.
-- Los plugins Java correrán peor que en Paper (sin JVM nativa, modelo síncrono
-  roto por el multihilo — evidencia: Folia "expect compatibility at 0").
-- Licencia: la API de Paper es MIT; implementarla en clean-room desde Rust no
-  copia la implementación GPL. Se documenta si se incorpora código de Cardboard.
+- `jni-rs` becomes **optional** on the allowlist: only inside
+  `hyperion_compat` (Path B), never in the core (ADR 0003 remains for the core).
+- TeaVM is an **external tool** (Java compiler), not a runtime crate;
+  audited separately (see docs/DEPENDENCIES.md).
+- Compatibility is **not a priority and opt-in**; native performance is not sacrificed.
+- Java plugins will run worse than on Paper (no native JVM, synchronous model
+  broken by multi-threading — evidence: Folia "expect compatibility at 0").
+- License: Paper's API is MIT; implementing it clean-room from Rust does not
+  copy the GPL implementation. Documented if Cardboard code is incorporated.

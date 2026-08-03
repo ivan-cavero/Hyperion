@@ -1,43 +1,43 @@
-# Contribuyendo a Hyperion
+# Contributing to Hyperion
 
-¡Gracias por querer aportar! Hyperion es un proyecto ambicioso que solo avanza con comunidad. Aquí está cómo participar.
+Thanks for wanting to help! Hyperion is an ambitious project that only moves forward with community. Here is how to take part.
 
-## Cómo empezar
+## Getting started
 
-1. **Fork** el repositorio y clónalo.
-2. Instala Rust (stable) — `rustup.rs`.
-3. `cargo build` desde la raíz del workspace.
-4. `cargo test` y `cargo clippy` deben pasar.
-5. Elige un issue etiquetado `good-first-issue` o propón uno.
+1. **Fork** the repository and clone it.
+2. Install Rust (stable) — `rustup.rs`.
+3. `cargo build` from the workspace root.
+4. `cargo test` and `cargo clippy` must pass.
+5. Pick an issue labeled `good-first-issue` or propose one.
 
-## Convenciones
+## Conventions
 
-- **Rust**: `rustfmt` + `clippy` limpio (sin warnings). El CI lo verifica.
-- **Sin `unsafe` sin justificación**: si necesitas `unsafe`, debe ir en un módulo aislado con un comentario `// SAFETY:` explicando por qué es correcto.
-- **Tests**: todo código de red/protocolo lleva unit tests de round-trip. El fuzzing es obligatorio para cualquier parser de entrada de red.
-- **Commits**: mensajes claros en inglés, prefijo de crate cuando aplica (ej. `protocol: fix keep-alive timeout`).
-- **Docs**: API pública documentada (`///`).
+- **Rust**: clean `rustfmt` + `clippy` (no warnings). CI enforces this.
+- **No `unsafe` without justification**: if you need `unsafe`, it must live in an isolated module with a `// SAFETY:` comment explaining why it is correct.
+- **Tests**: all network/protocol code includes round-trip unit tests. Fuzzing is mandatory for any network input parser.
+- **Commits**: clear messages in English, crate prefix when applicable (e.g. `protocol: fix keep-alive timeout`).
+- **Docs**: public API documented (`///`).
 
-## Flujo de PR
+## PR flow
 
-1. Crea una rama desde `main`.
-2. Haz cambios pequeños y revisables.
-3. Ejecuta localmente: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test` (la matriz completa de comandos y qué cubre cada uno está en [`TESTING.md`](TESTING.md)).
-4. Abre el PR describiendo *qué* y *por qué* (y cómo lo probaste).
-5. Un maintainer revisa; discute en el hilo hasta aprobar.
+1. Create a branch from `main`.
+2. Make small, reviewable changes.
+3. Run locally: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test` (the full command matrix and what each covers is in [`TESTING.md`](TESTING.md)).
+4. Open the PR describing *what* and *why* (and how you tested it).
+5. A maintainer reviews; discuss in the thread until approved.
 
-## Áreas donde siempre se necesita ayuda
+## Areas where help is always needed
 
-- **Fuzzing** del protocolo (encontrar crashes antes que los atacantes).
-- **Datos**: extraer y validar registries de cada versión de Minecraft.
-- **Benchmarks** comparativos contra Paper/Folia.
-- **Documentación** y tutoriales de plugins.
-- **Código**: worldgen, simulación, red, API de plugins.
+- **Fuzzing** the protocol (find crashes before attackers do).
+- **Data**: extract and validate registries for each Minecraft version.
+- **Benchmarks** comparing against Paper/Folia.
+- **Documentation** and plugin tutorials.
+- **Code**: worldgen, simulation, network, plugin API.
 
-## Código de conducta
+## Code of conduct
 
-Sé respetuoso. Todo el mundo está aprendiendo. Los ataques personales, el spam y el acoso no se toleran — los maintainers pueden expulsar a quien los cometa.
+Be respectful. Everyone is learning. Personal attacks, spam, and harassment are not tolerated — maintainers may remove anyone who commits them.
 
-## Licencia
+## License
 
-Al contribuir aceptas que tu código queda bajo MIT (igual que el proyecto).
+By contributing you agree that your code is licensed under MIT (same as the project).

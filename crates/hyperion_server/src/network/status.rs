@@ -9,6 +9,7 @@ use hyperion_protocol::{
 use tracing::trace;
 
 use super::connection::{Connection, ConnectionError};
+use crate::config::ServerConfig;
 
 /// Clientbound Status packet IDs.
 pub const STATUS_RESPONSE_PACKET_ID: i32 = 0;
@@ -20,13 +21,14 @@ const STATUS_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Version name advertised in the server list.
 const PROTOCOL_VERSION_NAME: &str = "26.2";
-/// Server list MOTD.
-const SERVER_MOTD: &str = "A Hyperion server";
 
 /// Handles the Status exchange: server list and ping/pong.
+///
+/// Player cap and MOTD come from [`ServerConfig`] so the multiplayer list
+/// matches `server.properties` (`max-players`, `motd`).
 pub(super) async fn serve_status(
     connection: &mut Connection,
-    config: &crate::config::ServerConfig,
+    config: &ServerConfig,
 ) -> Result<(), ConnectionError> {
     loop {
         let frame = match connection.read_frame_timeout(STATUS_READ_TIMEOUT).await {
@@ -57,8 +59,8 @@ pub(super) async fn serve_status(
     }
 }
 
-/// The server list advertised by Hyperion.
-fn status_response(config: &crate::config::ServerConfig) -> StatusResponse {
+/// Builds the server-list payload from the live configuration.
+fn status_response(config: &ServerConfig) -> StatusResponse {
     StatusResponse {
         version: StatusVersion {
             name: PROTOCOL_VERSION_NAME.to_owned(),
@@ -66,11 +68,12 @@ fn status_response(config: &crate::config::ServerConfig) -> StatusResponse {
         },
         players: StatusPlayers {
             max: config.max_players,
+            // Live online count is tracked once multi-player sessions exist.
             online: 0,
             sample: Vec::new(),
         },
         description: StatusDescription {
-            text: SERVER_MOTD.to_owned(),
+            text: config.motd.clone(),
         },
         favicon: None,
         enforces_secure_chat: false,

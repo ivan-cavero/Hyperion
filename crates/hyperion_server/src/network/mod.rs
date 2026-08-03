@@ -41,14 +41,17 @@ use crate::key_pool::KeyPool;
 /// server needs.
 const KEY_POOL_SIZE: usize = 4;
 
-/// Accepts connections on `config.bind_address` and dispatches each to its
-/// own task.
+/// Accepts connections on the address from [`ServerConfig`] and dispatches
+/// each to its own task.
 pub async fn serve(config: ServerConfig) -> io::Result<()> {
-    let listener = TcpListener::bind(&config.bind_address).await?;
+    let bind_address = config.bind_address();
+    let listener = TcpListener::bind(&bind_address).await?;
     let key_pool = KeyPool::new(KEY_POOL_SIZE);
     info!(
-        bind_address = %config.bind_address,
+        bind_address = %bind_address,
         online_mode = config.online_mode,
+        max_players = config.max_players,
+        motd = %config.motd,
         compression_threshold = config.compression_threshold,
         session_server = %config.session_server_url,
         key_pool_size = KEY_POOL_SIZE,

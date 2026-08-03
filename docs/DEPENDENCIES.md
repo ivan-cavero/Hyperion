@@ -1,87 +1,87 @@
-# 📦 Hyperion — Política de dependencias
+# 📦 Hyperion — Dependency policy
 
-> **Principio**: menos es más. Cada crate externo es una deuda de mantenimiento.
-> Solo se aceptan dependencias con mantenimiento demostrado, licencia permisiva
-> y sin `unsafe` innecesario. Lo específico de Minecraft se implementa aquí.
+> **Principle**: less is more. Every external crate is a maintenance debt.
+> Only dependencies with proven maintenance, permissive license, and no
+> unnecessary `unsafe` are accepted. Minecraft-specific code is implemented here.
 
-## Reglas
+## Rules
 
-1. **Ninguna dependencia nueva sin PR de auditoría** (justificar: propósito, licencia, mantenimiento, alternativa).
-2. **Auditar cada fase** del ROADMAP: si una dependencia lleva 6+ meses sin release y sin commits, se reemplaza o se elimina.
-3. **`cargo audit` en CI** (alertas de vulnerabilidades).
-4. **Minimizar dependencias transitivas**: preferir crates del mismo ecosistema mantenido.
-5. **Preferir zero-dependency** para todo lo específico de Minecraft.
+1. **No new dependency without an audit PR** (justify: purpose, license, maintenance, alternative).
+2. **Audit each phase** of the ROADMAP: if a dependency has 6+ months without a release and without commits, it is replaced or removed.
+3. **`cargo audit` in CI** (vulnerability alerts).
+4. **Minimize transitive dependencies**: prefer crates from the same maintained ecosystem.
+5. **Prefer zero-dependency** for everything Minecraft-specific.
 
-## Lista blanca (verificada 2026-08-03)
+## Allowlist (verified 2026-08-03)
 
-| Crate | Propósito | Licencia | Mantenido por | Estado | Se añade en |
+| Crate | Purpose | License | Maintained by | Status | Added in |
 |---|---|---|---|---|---|
-| `tokio` | Runtime async (red) | MIT | Tokio team (AWS) | ✅ activo | Fase 1 |
-| `bytes` | Buffers de red | MIT | Tokio team | ✅ activo | Fase 1 |
-| `flate2` / `miniz_oxide` | Compresión zlib | MIT/Apache-2.0 | Alex Crichton | ✅ activo | Fase 1 |
-| `sha1`, `sha2`, `aes`, `rsa` | Cripto handshake | Apache-2.0/MIT | RustCrypto | ✅ activo | Fase 1 |
-| `md5` | UUID offline v3 (paridad vanilla `OfflinePlayer:<name>`) | MIT/Apache-2.0 | RustCrypto | ✅ activo | Fase 1 |
-| `rand` | RNG para generación de claves RSA | MIT/Apache-2.0 | Rust Random project | ✅ activo | Fase 1 |
-| `serde` + `serde_json` | Datos extraídos | MIT/Apache-2.0 | Serde team | ✅ activo | Fase 1 |
-| `uuid` | IDs de jugador/entidad | MIT/Apache-2.0 | uuid-rs | ✅ activo | Fase 1 |
-| `thiserror` | Errores ergonómicos | MIT/Apache-2.0 | dtolnay | ✅ activo | Fase 1 |
-| `tracing` | Logging estructurado | MIT | Tokio team | ✅ activo | Fase 1 |
-| `tracing-subscriber` | Runtime de logging + `RUST_LOG` (env-filter) | MIT | Tokio team | ✅ activo | Fase 1 |
-| `reqwest` (con `rustls-tls`, sin default-tls) | Cliente HTTP para el session server de Mojang | MIT/Apache-2.0 | Hyper (Sean McArthur et al.) | ✅ activo | Fase 1 |
-| `rustls` (transitiva) | TLS en Rust puro — evita openssl/native-tls | MIT/Apache-2.0 | rustls team | ✅ activo | Fase 1 |
-| `libfuzzer-sys` | Motor de fuzzing libFuzzer, solo en `crates/hyperion_protocol/fuzz/` | Apache-2.0/MIT | Rust Fuzz project | ✅ activo | Fase 1 |
-| `rayon` | Paralelismo de datos | MIT/Apache-2.0 | Rayon team | ✅ activo | Fase 3 |
-| `crossbeam` | Utilidades de concurrencia | MIT/Apache-2.0 | Crossbeam team | ✅ activo | Fase 3 |
-| `parking_lot` | Locks más rápidos | MIT/Apache-2.0 | Amanieu | ✅ activo | Fase 3 |
-| `dashmap` | Mapas concurrentes | MIT | xacrimon | ✅ activo | Fase 3 |
-| `wasmtime` | Runtime WASM de plugins | Apache-2.0 | Bytecode Alliance (18.4k★) | ✅ activo | Fase 4 |
-| `mlua` | Scripting Lua | MIT | mlua-rs (2.8k★) | ✅ activo | Fase 4 |
-| `cubiomes` (C, FFI) | Referencia worldgen biomas/estructuras | **MIT** | Cubitect | ✅ activo | Fase 2 (opcional) |
-| `bevy_ecs` | ECS (decisión abierta) | MIT/Apache-2.0 | Bevy org | ✅ activo | Fase 3 (decisión) |
+| `tokio` | Async runtime (network) | MIT | Tokio team (AWS) | ✅ active | Phase 1 |
+| `bytes` | Network buffers | MIT | Tokio team | ✅ active | Phase 1 |
+| `flate2` / `miniz_oxide` | zlib compression | MIT/Apache-2.0 | Alex Crichton | ✅ active | Phase 1 |
+| `sha1`, `sha2`, `aes`, `rsa` | Handshake crypto | Apache-2.0/MIT | RustCrypto | ✅ active | Phase 1 |
+| `md5` | Offline UUID v3 (vanilla `OfflinePlayer:<name>` parity) | MIT/Apache-2.0 | RustCrypto | ✅ active | Phase 1 |
+| `rand` | RNG for RSA key generation | MIT/Apache-2.0 | Rust Random project | ✅ active | Phase 1 |
+| `serde` + `serde_json` | Extracted data | MIT/Apache-2.0 | Serde team | ✅ active | Phase 1 |
+| `uuid` | Player/entity IDs | MIT/Apache-2.0 | uuid-rs | ✅ active | Phase 1 |
+| `thiserror` | Ergonomic errors | MIT/Apache-2.0 | dtolnay | ✅ active | Phase 1 |
+| `tracing` | Structured logging | MIT | Tokio team | ✅ active | Phase 1 |
+| `tracing-subscriber` | Logging runtime + `RUST_LOG` (env-filter) | MIT | Tokio team | ✅ active | Phase 1 |
+| `reqwest` (with `rustls-tls`, no default-tls) | HTTP client for Mojang session server | MIT/Apache-2.0 | Hyper (Sean McArthur et al.) | ✅ active | Phase 1 |
+| `rustls` (transitive) | Pure-Rust TLS — avoids openssl/native-tls | MIT/Apache-2.0 | rustls team | ✅ active | Phase 1 |
+| `libfuzzer-sys` | libFuzzer engine, only in `crates/hyperion_protocol/fuzz/` | Apache-2.0/MIT | Rust Fuzz project | ✅ active | Phase 1 |
+| `rayon` | Data parallelism | MIT/Apache-2.0 | Rayon team | ✅ active | Phase 3 |
+| `crossbeam` | Concurrency utilities | MIT/Apache-2.0 | Crossbeam team | ✅ active | Phase 3 |
+| `parking_lot` | Faster locks | MIT/Apache-2.0 | Amanieu | ✅ active | Phase 3 |
+| `dashmap` | Concurrent maps | MIT | xacrimon | ✅ active | Phase 3 |
+| `wasmtime` | Plugin WASM runtime | Apache-2.0 | Bytecode Alliance (18.4k★) | ✅ active | Phase 4 |
+| `mlua` | Lua scripting | MIT | mlua-rs (2.8k★) | ✅ active | Phase 4 |
+| `cubiomes` (C, FFI) | Worldgen biomes/structures reference | **MIT** | Cubitect | ✅ active | Phase 2 (optional) |
+| `bevy_ecs` | ECS (open decision) | MIT/Apache-2.0 | Bevy org | ✅ active | Phase 3 (decision) |
 
-## Lo que implementamos nosotros (sin dependencia externa)
+## What we implement ourselves (no external dependency)
 
-| Módulo | Por qué |
+| Module | Why |
 |---|---|
-| **Protocolo / paquetes** | Específico de Minecraft; codegen desde JSON |
-| **NBT** | Formato simple y público; control total de rendimiento |
-| **Worldgen núcleo** | Paridad 1:1 exige control fino; cubiomes solo como referencia |
-| **Formato de mundo HCF** | I/O multihilo ultrarrápida |
-| **Simulación / region ticking** | Núcleo del producto; sin delegación |
-| **ABI de plugins** | Contrato estable propio (WIT) |
+| **Protocol / packets** | Minecraft-specific; codegen from JSON |
+| **NBT** | Simple public format; full performance control |
+| **Worldgen core** | 1:1 parity requires fine control; cubiomes only as reference |
+| **HCF world format** | Ultra-fast multi-threaded I/O |
+| **Simulation / region ticking** | Product core; no delegation |
+| **Plugin ABI** | Own stable contract (WIT) |
 
-## Excluidos explícitamente
+## Explicitly excluded
 
-| Crate | Por qué NO |
+| Crate | Why NOT |
 |---|---|
-| `jni-rs` / puentes JVM | Excluido del NUCLEO (ADR 0003). Opcional SOLO dentro de `hyperion_compat` (Vía B, ADR 0006) |
-| `libloading` / `dlopen` | Plugins nativos = código arbitrario sin sandbox; además no se descargan en Windows. WASM resuelve el problema |
-| Crates de terceros de "minecraft server" (valence, etc.) | Hyperion es un proyecto desde cero: aprender y controlar todo. Solo se estudian como referencia |
+| `jni-rs` / JVM bridges | Excluded from the CORE (ADR 0003). Optional ONLY inside `hyperion_compat` (Path B, ADR 0006) |
+| `libloading` / `dlopen` | Native plugins = arbitrary code without sandbox; also cannot be unloaded on Windows. WASM solves the problem |
+| Third-party "minecraft server" crates (valence, etc.) | Hyperion is a from-scratch project: learn and control everything. Studied only as reference |
 
-## Fallbacks (si una dependencia muere)
+## Fallbacks (if a dependency dies)
 
-- `tokio`/`bytes` → std + threads (coste: más código, menos abstracción)
-- `flate2` → `miniz_oxide` (ya transitiva) o zlib-sys propio
-- RustCrypto → implementación propia del handshake (AES/CFB8 + RSA-1024 son algoritmos pequeños)
-- `wasmtime` → `wasmer` (misma licencia, ecosistema similar) — decisión con fecha de caducidad
-- `mlua` → runtime Lua propio (Lua 5.4 es pequeño) o scripting Rhai
+- `tokio`/`bytes` → std + threads (cost: more code, less abstraction)
+- `flate2` → `miniz_oxide` (already transitive) or own zlib-sys
+- RustCrypto → own handshake implementation (AES/CFB8 + RSA-1024 are small algorithms)
+- `wasmtime` → `wasmer` (same license, similar ecosystem) — decision with expiry date
+- `mlua` → own Lua runtime (Lua 5.4 is small) or Rhai scripting
 
-## Decisión registrada: ¿por qué WASM y no cdylib para plugins?
+## Recorded decision: why WASM and not cdylib for plugins?
 
-- **Seguridad**: WASM = sandbox por capacidades; cdylib = código arbitrario con acceso total.
-- **Portabilidad**: WASM funciona igual en Windows/Linux/macOS; cdylib no se descarga en Windows.
-- **Hot-reload**: WASM se descarga limpiamente; los `.so`/`.dll` no.
-- **Es la dirección que está tomando el ecosistema nativo** (Pumpkin migra de libloading a WIT/WASM).
+- **Security**: WASM = capability sandbox; cdylib = arbitrary code with full access.
+- **Portability**: WASM works the same on Windows/Linux/macOS; cdylib cannot be unloaded on Windows.
+- **Hot-reload**: WASM unloads cleanly; `.so`/`.dll` do not.
+- **It is the direction the native ecosystem is taking** (Pumpkin migrates from libloading to WIT/WASM).
 
-*Última auditoría: 2026-08-02 · Próxima: al inicio de cada fase del ROADMAP.*
-## Herramientas externas de compatibilidad (NO crates de runtime)
+*Last audit: 2026-08-02 · Next: at the start of each ROADMAP phase.*
+## External compatibility tools (NOT runtime crates)
 
-Auditadas aparte, usadas solo en el pipeline de `hyperion_compat` (ADR 0006):
+Audited separately, used only in the `hyperion_compat` pipeline (ADR 0006):
 
-| Herramienta | Uso | Licencia | Estado |
+| Tool | Use | License | Status |
 |---|---|---|---|
-| **TeaVM** | Compilar plugins Java (bytecode) → WebAssembly (Vía C) | Apache-2.0 | 3k★, activo — investigación Fase 4.5 |
-| **JDK** (toolchain) | Compilar plugins de prueba / jar de la API Bukkit | GPLv2+CE / OpenJDK | Toolchain de desarrollo, no runtime |
+| **TeaVM** | Compile Java plugins (bytecode) → WebAssembly (Path C) | Apache-2.0 | 3k★, active — Phase 4.5 research |
+| **JDK** (toolchain) | Compile test plugins / Bukkit API jar | GPLv2+CE / OpenJDK | Development toolchain, not runtime |
 
-Estas herramientas NO entran en la lista blanca de crates del runtime y no
-pueden usarse en el núcleo de Hyperion.
+These tools do NOT enter the runtime crate allowlist and cannot be used in the
+Hyperion core.

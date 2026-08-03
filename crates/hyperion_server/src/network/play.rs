@@ -63,6 +63,9 @@ pub(super) async fn serve_play(
     let view_distance = config
         .view_distance
         .clamp(MIN_VIEW_DISTANCE, MAX_VIEW_DISTANCE);
+    let simulation_distance = config
+        .simulation_distance
+        .clamp(MIN_VIEW_DISTANCE, MAX_VIEW_DISTANCE);
     let spawn_y = config.spawn_y as f64 + 0.5;
 
     // 1. Login (play): the client leaves the loading screen once it arrives.
@@ -73,7 +76,7 @@ pub(super) async fn serve_play(
         hardcore: false,
         max_players: config.max_players,
         view_distance,
-        simulation_distance: view_distance,
+        simulation_distance,
         reduced_debug_info: false,
         enable_respawn_screen: true,
         dimension_type: OVERWORLD_DIMENSION_TYPE_ID,
@@ -120,9 +123,9 @@ pub(super) async fn serve_play(
         )
         .await?;
 
-    // 4. Server data (tab-list MOTD).
+    // 4. Server data (tab-list MOTD) — same text as the multiplayer list.
     let server_data = ServerData {
-        motd: "Hyperion".to_owned(),
+        motd: config.motd.clone(),
         icon: None,
     };
     connection
@@ -148,7 +151,7 @@ pub(super) async fn serve_play(
     connection
         .write_frame(
             SET_SIMULATION_DISTANCE_PACKET_ID,
-            &encode_set_simulation_distance_payload(view_distance),
+            &encode_set_simulation_distance_payload(simulation_distance),
         )
         .await?;
 

@@ -1,14 +1,14 @@
-//! Compresión zlib de paquetes (RFC 1950).
+//! Zlib packet compression (RFC 1950).
 //!
-//! Con compresión activa, el cuerpo de cada trama es:
+//! With compression enabled, each frame body is:
 //!
 //! ```text
-//! Data Length (VarInt) + datos
+//! Data Length (VarInt) + data
 //! ```
 //!
-//! donde `Data Length` es `0` si el paquete no se comprimió, o la longitud del
-//! paquete sin comprimir si sí; en ese caso los bytes zlib llenan el resto de
-//! la trama. No hay un campo separado con la longitud comprimida.
+//! where `Data Length` is `0` if the packet was left uncompressed, or the
+//! uncompressed length when it was compressed; in that case the remaining
+//! bytes are zlib. There is no separate compressed-length field.
 
 use std::io::{Read, Write};
 
@@ -19,7 +19,7 @@ use flate2::write::ZlibEncoder;
 use crate::ProtocolError;
 use crate::frame::{decode_var_i32_at, encode_var_i32};
 
-/// Longitud máxima de un paquete sin comprimir en el wire (2^23).
+/// Maximum uncompressed packet length on the wire (2^23).
 pub const MAX_UNCOMPRESSED_LENGTH: usize = 8_388_608;
 
 const MAX_VARINT_BYTES: usize = 5;
@@ -49,7 +49,7 @@ pub fn compress_body(packet_body: &[u8], threshold: usize) -> Result<Vec<u8>, Pr
     }
 }
 
-/// Descomprime el cuerpo de una trama, devolviendo el paquete (ID + payload).
+/// Decompresses a frame body, returning the packet (ID + payload).
 pub fn decompress_body(input: &[u8]) -> Result<Vec<u8>, ProtocolError> {
     let (data_length, data_offset) = decode_var_i32_at(input, 0, 0, 0, 0, MAX_VARINT_BYTES)?;
     if data_length < 0 {

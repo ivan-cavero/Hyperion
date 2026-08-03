@@ -1,25 +1,25 @@
-# ADR 0002 — Runtime de plugins: WASM/WIT (wasmtime)
+# ADR 0002 — Plugin runtime: WASM/WIT (wasmtime)
 
-- Estado: **Aceptada**
-- Fecha: 2026-08-02
+- Status: **Accepted**
+- Date: 2026-08-02
 
-## Contexto
+## Context
 
-Se necesita una API de plugins que sea **segura** (el claim principal del
-proyecto) y que no arrastre el modelo inseguro de `dlopen`/`libloading`
-(código arbitrario con acceso total; además, las DLL no se descargan en Windows).
+A plugin API is needed that is **secure** (the project's main claim) and that
+does not drag in the insecure `dlopen`/`libloading` model (arbitrary code with
+full access; also, DLLs cannot be unloaded on Windows).
 
-## Decisión
+## Decision
 
-Los plugins de Hyperion se ejecutan como módulos **WebAssembly** con interfaz
-**WIT** (WebAssembly Interface Types), usando `wasmtime` (Bytecode Alliance,
-18.4k★, Apache-2.0, activo) como runtime.
+Hyperion plugins run as **WebAssembly** modules with a **WIT** interface
+(WebAssembly Interface Types), using `wasmtime` (Bytecode Alliance, 18.4k★,
+Apache-2.0, active) as the runtime.
 
-## Consecuencias
+## Consequences
 
-- Sandbox por capacidades: el plugin solo accede a lo que la API concede.
-- Hot-reload limpio: WASM se descarga sin `dlopen`.
-- Portabilidad idéntica en Windows/Linux/macOS.
-- Coste: se añade `wasmtime` como dependencia de la lista blanca en Fase 4
-  (auditoría: docs/DEPENDENCIES.md). Fallback: `wasmer`.
-- Scripting Lua (MLua) se construye sobre la misma API para simplicidad.
+- Capability sandbox: the plugin only accesses what the API grants.
+- Clean hot-reload: WASM unloads without `dlopen`.
+- Identical portability on Windows/Linux/macOS.
+- Cost: `wasmtime` is added as an allowlist dependency in Phase 4
+  (audit: docs/DEPENDENCIES.md). Fallback: `wasmer`.
+- Lua scripting (MLua) is built on the same API for simplicity.

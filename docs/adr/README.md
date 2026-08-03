@@ -1,17 +1,17 @@
 # Architecture Decision Records (ADR)
 
-Registro de decisiones de arquitectura. Cada ADR documenta una decisión,
-su contexto y sus consecuencias — incluso las decisiones *abiertas*.
+Record of architecture decisions. Each ADR documents a decision,
+its context, and its consequences — including *open* decisions.
 
-Convención: `NNNN-nombre.md`. Estado: **Aceptada**, **Propuesta** (abierta),
-**Sustituida**.
+Convention: `NNNN-name.md`. Status: **Accepted**, **Proposed** (open),
+**Superseded**.
 
-| ADR | Título | Estado |
+| ADR | Title | Status |
 |-----|--------|--------|
-| 0001 | Fuente del worldgen (1:1 vanilla) | **Propuesta** — decisión pendiente, límite Fase 2 |
-| 0002 | Runtime de plugins: WASM/WIT (wasmtime) | Aceptada |
-| 0003 | Sin puente JVM (no embeder Java) | Aceptada (núcleo) — ampliada por 0006 |
-| 0004 | Ticking por regiones multihilo | Aceptada |
-| 0005 | Pipeline datos → codegen para el protocolo | Aceptada |
-| 0006 | Compatibilidad con plugins Java: TeaVM → JVM | Aceptada (estratégica) |
-| 0007 | Estrategia de versiones: 26.2 primero, multi-versión después | Aceptada |
+| 0001 | Worldgen source (1:1 vanilla) | **Proposed** — pending decision, Phase 2 deadline |
+| 0002 | Plugin runtime: WASM/WIT (wasmtime) | Accepted |
+| 0003 | No JVM bridge (do not embed Java) | Accepted (core) — extended by 0006 |
+| 0004 | Multi-threaded region ticking | Accepted |
+| 0005 | Data → codegen pipeline for the protocol | Accepted |
+| 0006 | Java plugin compatibility: TeaVM → JVM | Accepted (strategic) |
+| 0007 | Version strategy: 26.2 first, multi-version later | Accepted |

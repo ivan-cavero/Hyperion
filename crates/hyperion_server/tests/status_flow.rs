@@ -21,9 +21,10 @@ async fn serves_status_and_echoes_ping() {
         .local_addr()
         .expect("listener should have an address");
 
-    // Non-default player limit to prove the status response uses the config.
+    // Non-default values prove the status response reads server.properties fields.
     let config = ServerConfig {
         max_players: 42,
+        motd: "Configured MOTD".to_owned(),
         ..ServerConfig::default()
     };
     let key_pool = KeyPool::new(1);
@@ -47,7 +48,10 @@ async fn serves_status_and_echoes_ping() {
     let response_json = read_string(&status_frame.payload, &mut offset);
     assert!(response_json.contains("\"enforcesSecureChat\":false"));
     assert!(response_json.contains(&format!("\"protocol\":{SUPPORTED_PROTOCOL_VERSION}")));
-    assert!(response_json.contains("\"text\":\"A Hyperion server\""));
+    assert!(
+        response_json.contains("\"text\":\"Configured MOTD\""),
+        "the status response must use the configured MOTD"
+    );
     assert!(
         response_json.contains("\"max\":42"),
         "the status response must advertise the configured player limit"

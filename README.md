@@ -1,125 +1,157 @@
 # ⚡ Hyperion
 
-> Servidor de Minecraft **nativo en Rust**: seguro, multinúcleo, imparable.
-> *Estado: pre-alpha / planificación activa — ver [ROADMAP.md](ROADMAP.md)*
+> **Native Rust** Minecraft server: secure, multi-core, unstoppable.
+> *Status: pre-alpha / active planning — see [ROADMAP.md](ROADMAP.md)*
 
 ---
 
-## ¿Qué es Hyperion?
+## What is Hyperion?
 
-Hyperion es un servidor de Minecraft **Java Edition** escrito **desde cero en Rust**, sin una sola línea de Java en el servidor. No es un fork de Paper ni un wrapper: es una implementación independiente del protocolo y de la simulación del juego, diseñada desde el primer día para:
+Hyperion is a **Java Edition** Minecraft server written **from scratch in Rust**, with not a single line of Java in the server. It is not a Paper fork or a wrapper: it is an independent implementation of the protocol and game simulation, designed from day one for:
 
-- 🚀 **Rendimiento extremo** — aprovecha TODOS los núcleos del servidor con *ticking por regiones* (sin hilo principal único, sin GC pauses).
-- 🛡️ **Seguridad por construcción** — memoria segura garantizada por el compilador + sandboxing real de plugins (WebAssembly).
-- 🎯 **Paridad vanilla 1:1** — la misma seed produce el mismo mundo, bloque a bloque, como en el servidor oficial.
-- 🔄 **Actualización de versiones asistida** — pipeline de extracción de datos + generación de código para adaptarse a cada release de Mojang en días, no semanas.
-- 🧩 **Ecosistema de plugins propio** — una API más potente que Bukkit y a la vez más simple, con plugins en WASM (seguros) y scripting en Lua.
+- 🚀 **Extreme performance** — uses ALL server cores with *region ticking* (no single main thread, no GC pauses).
+- 🛡️ **Security by construction** — memory safety guaranteed by the compiler + real plugin sandboxing (WebAssembly).
+- 🎯 **1:1 vanilla parity** — the same seed produces the same world, block by block, as the official server.
+- 🔄 **Assisted version updates** — data extraction + code generation pipeline to adapt to each Mojang release in days, not weeks.
+- 🧩 **Own plugin ecosystem** — an API more powerful than Bukkit and simpler at the same time, with WASM plugins (safe) and Lua scripting.
 
 ---
 
-## Objetivos (v1)
+## Goals (v1)
 
-| Área | Objetivo |
+| Area | Goal |
 |---|---|
-| **Protocolo** | Java Edition, versión actual de Mojang + rango reciente multi-versión |
-| **Mundo** | Worldgen vanilla 1:1 (terreno, biomas, estructuras) con la misma seed |
-| **Simulación** | Comportamiento vanilla: física, líquidos, redstone, mobs, chunks |
-| **Rendimiento** | Ticking por regiones multihilo; 500–1000+ jugadores en un mundo |
-| **Seguridad** | Fuzzing del protocolo, zero `unsafe` salvo FFI justificado, plugins sandboxed |
-| **Plugins** | API nativa WASM/WIT + scripting Lua (MLua) |
-| **Versiones** | Pipeline datos→codegen; adaptación rápida a cada release |
+| **Protocol** | Java Edition, current Mojang version + recent multi-version range |
+| **World** | 1:1 vanilla worldgen (terrain, biomes, structures) with the same seed |
+| **Simulation** | Vanilla behavior: physics, fluids, redstone, mobs, chunks |
+| **Performance** | Multi-threaded region ticking; 500–1000+ players in one world |
+| **Security** | Protocol fuzzing, zero `unsafe` except justified FFI, sandboxed plugins |
+| **Plugins** | Native WASM/WIT API + Lua scripting (MLua) |
+| **Versions** | data→codegen pipeline; fast adaptation to each release |
 
-## No objetivos (v1) — decisiones deliberadas
+## Non-goals (v1) — deliberate decisions
 
-- **Compatibilidad con plugins Bukkit/Spigot/Paper**: no en v1; en investigación como capa OPT-IN de menor rendimiento (Vía C: TeaVM→WASM; plan B: JVM embebida). Ver [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)
-- **Mods Forge/Fabric/NeoForge**: client-side gratuito (los carga el cliente); server-side solo vía portes manuales a la API nativa. Expectativa realista: los mods pesados no corren en el núcleo nativo. Ver [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)
-- ❌ **"Miles de jugadores en un solo proceso con simulación completa"**: ningún servidor (ni Java ni nativo) lo ha sostenido en producción. El escalado horizontal (proxy + múltiples regiones/procesos) se abordará en fases posteriores.
+- **Bukkit/Spigot/Paper plugin compatibility**: not in v1; under research as an OPT-IN, lower-performance layer (Path C: TeaVM→WASM; plan B: embedded JVM). See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)
+- **Forge/Fabric/NeoForge mods**: client-side free (the client loads them); server-side only via manual ports to the native API. Realistic expectation: heavy mods do not run on the native core. See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)
+- ❌ **"Thousands of players in a single process with full simulation"**: no server (Java or native) has sustained this in production. Horizontal scaling (proxy + multiple regions/processes) will be addressed in later phases.
 
 ---
 
-## Arquitectura (resumen)
+## Architecture (summary)
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  RED (tokio, async)         │  cifrado · compresión · fuzz │
+│  NETWORK (tokio, async)     │  encryption · compression · fuzz │
 ├──────────────────────────────────────────────────────────┤
-│  PROTOCOLO (codegen)        │  paquetes Java (+Bedrock)   │
-│  · multi-versión con remapping de block-states            │
+│  PROTOCOL (codegen)         │  Java packets (+Bedrock)    │
+│  · multi-version with block-state remapping               │
 ├──────────────────────────────────────────────────────────┤
-│  MUNDO                      │  worldgen 1:1 · chunks      │
-│  · Anvil (compat) + formato propio ultra-rápido          │
+│  WORLD                      │  1:1 worldgen · chunks      │
+│  · Anvil (compat) + own ultra-fast format                 │
 ├──────────────────────────────────────────────────────────┤
-│  SIMULACIÓN — TICKING POR REGIONES (multihilo)           │
-│  · ECS · entidades · líquidos · redstone · mobs          │
+│  SIMULATION — REGION TICKING (multi-threaded)             │
+│  · ECS · entities · fluids · redstone · mobs              │
 ├──────────────────────────────────────────────────────────┤
-│  PLUGINS — WASM/WIT sandboxed + Lua scripting            │
+│  PLUGINS — sandboxed WASM/WIT + Lua scripting             │
 └──────────────────────────────────────────────────────────┘
 ```
 
-Detalle completo: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+Full detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ---
 
-## Política de dependencias
+## Dependency policy
 
-**Menos es más.** Solo dependemos de crates con mantenimiento demostrado (listado completo con licencias y justificación en [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md)):
+**Less is more.** We only depend on crates with proven maintenance (full list with licenses and justification in [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md)):
 
-- `tokio`, `bytes` (runtime async y buffers — mantenidos por el equipo Tokio)
-- `rayon` (paralelismo de datos)
-- `serde` + `serde_json` (serialización de datos extraídos)
-- `uuid`, `thiserror`, `tracing` (utilidades estándar)
-- `flate2`/`miniz_oxide` (compresión zlib del protocolo y mundo)
-- RustCrypto (`sha1`, `sha2`, `aes`, `rsa`) para el handshake y cifrado
-- `wasmtime` (runtime WASM para plugins — Bytecode Alliance) y `mlua` (scripting) — **fase 4**
+- `tokio`, `bytes` (async runtime and buffers — maintained by the Tokio team)
+- `rayon` (data parallelism)
+- `serde` + `serde_json` (serialization of extracted data)
+- `uuid`, `thiserror`, `tracing` (standard utilities)
+- `flate2`/`miniz_oxide` (zlib compression for protocol and world)
+- RustCrypto (`sha1`, `sha2`, `aes`, `rsa`) for handshake and encryption
+- `wasmtime` (WASM runtime for plugins — Bytecode Alliance) and `mlua` (scripting) — **phase 4**
 
-**Lo que implementamos nosotros** (cero dependencia externa, control total):
-- Protocolo completo (generado por codegen desde datos extraídos)
-- Formato **NBT** (especificación pública, simple)
-- Worldgen (núcleo propio + referencia opcional a `cubiomes`, **MIT**)
-- Formatos de mundo, simulación, API de plugins
+**What we implement ourselves** (zero external dependency, full control):
+- Full protocol (generated by codegen from extracted data)
+- **NBT** format (public, simple specification)
+- Worldgen (own core + optional reference to `cubiomes`, **MIT**)
+- World formats, simulation, plugin API
 
-**Excluido explícitamente**: `jni-rs` y cualquier puente JVM — el proyecto no embebe Java.
+**Explicitly excluded**: `jni-rs` and any JVM bridge — the project does not embed Java.
 
 ---
 
-## Estructura del repositorio
+## Repository structure
 
 ```
 Hyperion/
 ├── crates/
-│   ├── hyperion_core/         # fundamentos: tipos, matemáticas, registries
-│   ├── hyperion_protocol/     # codec de paquetes, NBT, multi-versión
-│   ├── hyperion_world/        # chunks, worldgen 1:1, formatos de mundo
-│   ├── hyperion_simulation/   # ticking por regiones, ECS, entidades
-│   ├── hyperion_plugin_api/   # ABI WASM/WIT, eventos, comandos, scripting
-│   └── hyperion_server/       # binario: red, arranque, wiring
-├── docs/                      # arquitectura, dependencias y ADRs (decisiones)
-├── tools/                     # extractores de datos y codegen
+│   ├── hyperion_core/         # foundations: types, math, registries
+│   ├── hyperion_protocol/     # packet codec, NBT, multi-version
+│   ├── hyperion_world/        # chunks, 1:1 worldgen, world formats
+│   ├── hyperion_simulation/   # region ticking, ECS, entities
+│   ├── hyperion_plugin_api/   # WASM/WIT ABI, events, commands, scripting
+│   └── hyperion_server/       # binary: network, boot, wiring
+├── docs/                      # architecture, dependencies, and ADRs (decisions)
+├── tools/                     # data extractors and codegen
 └── README.md · ROADMAP.md · CONTRIBUTING.md · LICENSE
 ```
 
 ---
 
-## Seguridad
+## Configuration (`server.properties`)
 
-- Memoria segura por el compilador (sin `unsafe` salvo FFI puntual y auditado).
-- **Fuzzing del protocolo** desde el día 1 (`cargo-fuzz`) — ninguna entrada de red sin fuzz.
-- Plugins en **WebAssembly** ejecutados en `wasmtime`: aislados por capacidades, sin acceso al sistema salvo lo concedido.
-- Cifrado oficial (AES/CFB8 + RSA), rate-limiting, timeouts y mitigación de DoS.
+Like vanilla Minecraft, Hyperion loads **one** properties file as the source of truth for
+runtime settings. On first start it creates `server.properties` next to the process working
+directory (override the path with `-c` / `--config`). Every subsystem (status, login, play, …)
+reads from that config — nothing operators can tune is hard-coded in the network layer.
 
-## Rendimiento
+| Key | Default | Notes |
+|---|---|---|
+| `server-ip` | *(empty)* | Empty = all interfaces (`0.0.0.0`) |
+| `server-port` | `25565` | TCP listen port |
+| `online-mode` | `true` | Mojang auth + session encryption |
+| `max-players` | `20` | Advertised in the multiplayer list |
+| `max-connections` | `1024` | Concurrent TCP cap (backpressure) |
+| `motd` | `A Hyperion server` | Server list + tab list |
+| `view-distance` | `8` | Client chunk render distance |
+| `simulation-distance` | `8` | Server-side simulation distance |
+| `network-compression-threshold` | `256` | Zlib threshold (`-1` disables) |
+| `session-server-url` | Mojang | Override for proxies / tests |
+| `spawn-y` | `100` | Temporary until worldgen |
+| `keep-alive-interval` / `keep-alive-timeout` | `10` / `30` | Seconds |
 
-- **Ticking por regiones**: cada región del mundo en su propio hilo (patrón validado por Folia y MCHPRS).
-- **ECS** para entidades (cache-friendly, sin punteros dispersos).
-- **Chunk-gen en pools de workers** + formato de mundo propio para carga/save ultrarrápida.
-- Pregeneración de mundo soportada (elimina el cuello de botella principal).
+CLI flags (`--online-mode`, `--offline-mode`, positional `host:port`) override the file after load.
+
+```bash
+cargo run -p hyperion_server
+# edit server.properties, then restart
+cargo run -p hyperion_server -- --offline-mode 127.0.0.1:25565
+```
 
 ---
 
-## Contribuir
+## Security
 
-Lee [CONTRIBUTING.md](CONTRIBUTING.md). Bienvenidos issues, PRs, fuzzing, benchmarks y documentación.
+- Memory safety by the compiler (no `unsafe` except audited, one-off FFI).
+- **Protocol fuzzing** from day one (`cargo-fuzz`) — no network input without fuzzing.
+- Plugins as **WebAssembly** modules run in `wasmtime`: capability-isolated, no system access unless granted.
+- Official encryption (AES/CFB8 + RSA), rate-limiting, timeouts, and DoS mitigation.
 
-## Licencia
+## Performance
 
-**MIT** — Hyperion contributors. Proyecto independiente, sin afiliación con Mojang/Microsoft. El uso del protocolo y formato de mundo sigue las reglas del EULA de Minecraft.
+- **Region ticking**: each world region on its own thread (pattern validated by Folia and MCHPRS).
+- **ECS** for entities (cache-friendly, no scattered pointers).
+- **Chunk-gen in worker pools** + own world format for ultra-fast load/save.
+- World pregeneration supported (removes the main bottleneck).
+
+---
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md). Issues, PRs, fuzzing, benchmarks, and documentation are welcome.
+
+## License
+
+**MIT** — Hyperion contributors. Independent project, not affiliated with Mojang/Microsoft. Use of the protocol and world format follows the Minecraft EULA.

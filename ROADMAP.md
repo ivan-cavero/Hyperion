@@ -1,211 +1,213 @@
 # 🗺️ Hyperion — ROADMAP
 
-> Plan de desarrollo completo. Las fechas son orientativas para un equipo de 1–3 personas a tiempo parcial.
-> Cada fase termina con criterios de salida verificables. El plan se revisa al final de cada fase.
+> Full development plan. Dates are indicative for a team of 1–3 people part-time.
+> Each phase ends with verifiable exit criteria. The plan is reviewed at the end of each phase.
 
-**Leyenda de estado**: ⬜ pendiente · 🔄 en curso · ✅ completado · ⏸️ aplazado
-
----
-
-## Visión de producto (norte)
-
-> Un servidor de Minecraft nativo en Rust que el ecosistema **elija por rendimiento y seguridad**:
-> más rápido que Paper, más seguro que cualquier server actual, con plugins sandboxed
-> y actualización de versiones en días. Primero hubs/minijuegos, luego survival de alto rendimiento.
-
-**No-norte** (cosas que NO somos): un reemplazo de Bukkit/Forge, un proceso mágico de "miles de jugadores", un clon de Paper.
+**Status legend**: ⬜ pending · 🔄 in progress · ✅ completed · ⏸️ deferred
 
 ---
 
-## FASE 0 — Fundación (mes 0–1) · ✅ (completada 2026-08-02)
+## Product vision (north star)
 
-Preparar el terreno: decisiones, toolchain, CI, esqueleto del workspace.
+> A native Rust Minecraft server that the ecosystem **chooses for performance and security**:
+> faster than Paper, safer than any current server, with sandboxed plugins
+> and version updates in days. First hubs/minigames, then high-performance survival.
 
-- [x] Nombre (Hyperion), licencia MIT y branding básico — **repo público: creado y push realizado: https://github.com/ivan-cavero/Hyperion**
-- [x] Workspace Cargo con los 6 crates (`hyperion_core`, `hyperion_protocol`, `hyperion_world`, `hyperion_simulation`, `hyperion_plugin_api`, `hyperion_server`)
-- [x] Toolchain Rust estable fijada (`rust-toolchain.toml`) + `rustfmt.toml` + `.editorconfig` + `.gitattributes` (LF)
-- [x] CI completo: `cargo build` · `cargo test` · `cargo clippy -D warnings` · `cargo fmt --check` + **cargo-audit** (seguridad) + **cargo-deny** (licencias) + dependabot — fuzz se añade en Fase 1
-- [ ] Decisión de worldgen: núcleo propio vs. referencia a cubiomes (MIT) vs. heredar de Pumpkin (GPL) — **ADR 0001 abierto, límite Fase 2**
-- [ ] Configuración de extracción de datos (ver Fase 2) — elegir fuente: data generators de Mojang + jar extractor
-- [x] README + ROADMAP + CONTRIBUTING + docs (ARCHITECTURE, DEPENDENCIES, ADR 0001–0005) publicados
-- [x] Primer commit de fundación creado
-
-**Criterio de salida**: `cargo test` verde en CI, un binario `hyperion-server` que imprime versión y arranca. ✅
-
----## FASE 1 — Red y protocolo (mes 1–4) · ⬜
-
-El corazón del proyecto: hablar el protocolo de Minecraft con seguridad.
-
-- [x] **Handshake + status (ping)**: responder al server list del cliente
-- [x] **Servidor TCP + status en vivo**: listener tokio en 25565, máquina de estados Handshake→Status; un cliente vanilla 26.x ve el server list y el ping responde
-- [x] **Login completo**: RSA-1024 handshake, AES/CFB8, compresión zlib — offline Y online-mode (autenticación Mojang) funcionando con tests
-- [x] **Configuration**: flujo vanilla correcto (Feature Flags → Known Packs → Registry Data sin NBT vía `minecraft:core` → Update Tags → Code of Conduct → Finish) con listados generados del jar 26.2
-- [🔄] **Play**: paquetes básicos (login (play), keep-alive, chat con eco, posición, spawn con chunk vacío con luz) — join hasta mundo vacío en protocolo 776 / 26.2
-- [ ] **Codec de paquetes generado** por codegen desde JSON extraído (registries + protocolo)
-- [🔄] **NBT propio** (escritura network-NBT hecha y verificada contra capturas reales; lector y streaming pendientes)
-- [x] **Fuzzing**: `cargo-fuzz` frame/handshake/status/login en CI — config/play se añaden con el estado Play
-- [x] **Unit tests** de codecs frame/handshake/status/login/config/play + E2E offline/online hasta spawn
-- [ ] Herramienta `tools/packet_inspector` para depurar tráfico real contra un cliente vanilla
-
-**Criterio de salida**: un cliente vanilla 26.x entra al servidor, ve el mundo vacío, chatea y se mueve, con fuzzing verde en CI.
+**Anti-north** (things we are NOT): a Bukkit/Forge replacement, a magic "thousands of players" process, a Paper clone.
 
 ---
 
-## FASE 2 — Mundo y worldgen 1:1 (mes 4–8) · ⬜
+## PHASE 0 — Foundation (month 0–1) · ✅ (completed 2026-08-02)
 
-La promesa "misma seed, mismo mundo" se cumple aquí.
+Prepare the ground: decisions, toolchain, CI, workspace skeleton.
 
-- [ ] **Pipeline de extracción de datos**: mod Fabric o data generators de Mojang → JSON versionado (registries, biomes, items, protocolo)
-- [ ] **Codegen**: `build.rs` genera Rust desde los JSON (structs, coders, registries)
-- [ ] **Chunks**: formato Anvil (lectura/escritura, compat con mundos existentes)
-- [ ] **Worldgen**: ruido (simplex/octaves), biomas, superficie, cuevas, minerales, árboles — objetivo paridad bloque a bloque
-- [ ] **Estructuras**: stronghold, villages, bastions… (fase WIP — declarar nivel de paridad honesto)
-- [ ] **Formato propio** "Hyperion chunk format" (HCF) para carga/save multihilo ultrarrápida
-- [ ] **Luz**: cálculo de luz (sky/block) multihilo
-- [ ] **Testing diferencial**: comparar chunks generados contra vanilla (misma seed) en CI
-- [ ] Decision: worldgen heredado vs propio (cierre del punto abierto de Fase 0)
+- [x] Name (Hyperion), MIT license, and basic branding — **public repo: created and push done: https://github.com/ivan-cavero/Hyperion**
+- [x] Cargo workspace with the 6 crates (`hyperion_core`, `hyperion_protocol`, `hyperion_world`, `hyperion_simulation`, `hyperion_plugin_api`, `hyperion_server`)
+- [x] Pinned stable Rust toolchain (`rust-toolchain.toml`) + `rustfmt.toml` + `.editorconfig` + `.gitattributes` (LF)
+- [x] Full CI: `cargo build` · `cargo test` · `cargo clippy -D warnings` · `cargo fmt --check` + **cargo-audit** (security) + **cargo-deny** (licenses) + dependabot — fuzz is added in Phase 1
+- [ ] Worldgen decision: own core vs. cubiomes reference (MIT) vs. inherit from Pumpkin (GPL) — **ADR 0001 open, Phase 2 deadline**
+- [ ] Data extraction setup (see Phase 2) — choose source: Mojang data generators + jar extractor
+- [x] README + ROADMAP + CONTRIBUTING + docs (ARCHITECTURE, DEPENDENCIES, ADR 0001–0005) published
+- [x] First foundation commit created
 
-**Criterio de salida**: misma seed → mismo chunk en Hyperion y en vanilla (suite de diff tests), mundos Anvil existentes cargables.
-
----
-
-## FASE 3 — Simulación multinúcleo (mes 8–12) · ⬜
-
-Donde Hyperion se separa del resto: el hilo único desaparece.
-
-- [ ] **Ticking por regiones**: grupos de chunks independientes, cada uno con su thread (patrón Folia/MCHPRS)
-- [ ] **ECS** (`bevy_ecs` o sistema propio): entidades, componentes, sistemas — cache-friendly
-- [ ] **Física y movimiento**: gravedad, colisiones con el mundo
-- [ ] **Líquidos**: flujo básico (agua/lava) con update por región
-- [ ] **Redstone**: circuito básico (wire, torches, repeaters, comparators) — sin locks globales
-- [ ] **Mobs básicos**: spawn/despawn, AI simple (zombies, skeletons), daño y muerte
-- [ ] **Inventarios y bloques interactivos**: cofres, hornos, crafing básico
-- [ ] **Interacción cross-región** SOLO por mensajes (ports, teleports) — sin datos compartidos
-- [ ] Profiling (perf/tracy) y benchmarks internos
-
-**Criterio de salida**: 100+ jugadores en un mundo con simulación activa a 20 TPS estables, sin locks globales.
+**Exit criterion**: `cargo test` green in CI, a `hyperion-server` binary that prints version and starts. ✅
 
 ---
 
-## FASE 4 — API de plugins (mes 10–14) · ⬜
+## PHASE 1 — Network and protocol (month 1–4) · ⬜
 
-El diferenciador: plugins seguros y simples.
+The heart of the project: speak the Minecraft protocol securely.
 
-- [ ] **ABI WASM/WIT**: contrato estable de plugins (ciclo de vida `on_load`/`on_enable`/`on_disable`)
-- [ ] **Runtime**: `wasmtime` embebido, sandbox por capacidades (sin acceso al sistema salvo concedido)
-- [ ] **Eventos**: sistema de eventos (player join, block break, chat…) con dispatch por regiones
-- [ ] **Comandos**: registro con árbol estilo Brigadier
-- [ ] **Scheduler**: tareas async/sync, programadas por región
-- [ ] **Scripting Lua** (MLua) como capa de simplicidad: plugin en 20 líneas
-- [ ] **SDK de plugins**: plantillas (cargo-generate), docs, ejemplos
-- [ ] Hot-reload seguro de plugins (sin `dlopen` — WASM se descarga limpiamente)
+- [x] **Handshake + status (ping)**: respond to the client server list
+- [x] **Live TCP server + status**: tokio listener on 25565, Handshake→Status state machine; a vanilla 26.x client sees the server list and ping responds
+- [x] **Full login**: RSA-1024 handshake, AES/CFB8, zlib compression — offline AND online-mode (Mojang auth) working with tests
+- [x] **Configuration**: correct vanilla flow (Feature Flags → Known Packs → Registry Data without NBT via `minecraft:core` → Update Tags → Code of Conduct → Finish) with listings generated from the 26.2 jar
+- [🔄] **Play**: basic packets (login (play), keep-alive, chat with echo, position, spawn with empty chunk with light) — join to empty world on protocol 776 / 26.2
+- [ ] **Generated packet codec** by codegen from extracted JSON (registries + protocol)
+- [🔄] **Own NBT** (network-NBT writing done and verified against real captures; reader and streaming pending)
+- [x] **Fuzzing**: `cargo-fuzz` frame/handshake/status/login in CI — config/play added with the Play state
+- [x] **Unit tests** for frame/handshake/status/login/config/play codecs + E2E offline/online through spawn
+- [ ] `tools/packet_inspector` tool to debug real traffic against a vanilla client
 
-**Criterio de salida**: un plugin WASM de ejemplo (comando + evento + scheduler) funciona de extremo a extremo, documentado en la landing.
-
----
-
-## FASE 4.5 — Compatibilidad Java (investigación, NO prioritaria) · ⬜
-
-Evaluar retrocompatibilidad con plugins Bukkit/Spigot/Paper sin comprometer el
-núcleo. Estrategia completa: docs/COMPATIBILITY.md · ADR 0006.
-
-- [ ] **PoC Vía C (TeaVM → WASM)**: compilar un plugin mínimo (JavaPlugin + onEnable + 1 comando) a WASM con TeaVM
-- [ ] **PoC host imports**: exponer subconjunto de la API Bukkit (Player.send_message, command dispatch, permisos) como imports WASM del host
-- [ ] **PoC ejecución**: plugin corriendo en wasmtime sobre Hyperion (subconjunto API)
-- [ ] **Criterio go/no-go**: si features que TeaVM no soporta (reflection, threads, class-loading) bloquean >X% de plugins objetivo → degradar a Vía B
-- [ ] **Plan B (Vía B)**: PoC JVM embebida (`jni-rs`) + subconjunto API Bukkit en Rust (precedente de coste: Cardboard)
-
-**Criterio de salida**: decisión go/no-go documentada con evidencia; PoC funcional (Vía C o B) o decisión de abandonar. No bloquea el roadmap principal.
+**Exit criterion**: a vanilla 26.x client joins the server, sees the empty world, chats and moves, with fuzzing green in CI.
 
 ---
 
-## FASE 5 — Multi-versión y actualización asistida (mes 12–16) · ⬜
+## PHASE 2 — World and 1:1 worldgen (month 4–8) · ⬜
 
-Tu idea de "adaptarnos a cada release fácilmente" se vuelve sistema.
+The "same seed, same world" promise is delivered here.
 
-- [ ] **Remapping de block-states** entre versiones (modelo Pumpkin: rango 1.21→26.x)
-- [ ] **Diff automático**: al salir una versión nueva, comparar JSONs → generar mappings
-- [ ] **Codegen versionado**: un release = un commit de datos + regenerar código
-- [ ] **LLM como asistente de diffs** (con verificación obligatoria: fuzzing + diff testing contra vanilla)
-- [ ] Rango amplio (1.8+): evaluar proxy ViaVersion delante vs. traductor nativo propio (decisión en Fase 6)
-- [ ] Documentar el "release playbook": pasos exactos para actualizar a una versión nueva
+- [ ] **Data extraction pipeline**: Fabric mod or Mojang data generators → versioned JSON (registries, biomes, items, protocol)
+- [ ] **Codegen**: `build.rs` generates Rust from the JSON (structs, coders, registries)
+- [ ] **Chunks**: Anvil format (read/write, compat with existing worlds)
+- [ ] **Worldgen**: noise (simplex/octaves), biomes, surface, caves, ores, trees — goal block-by-block parity
+- [ ] **Structures**: stronghold, villages, bastions… (WIP phase — declare honest parity level)
+- [ ] **Own format** "Hyperion chunk format" (HCF) for ultra-fast multi-threaded load/save
+- [ ] **Light**: multi-threaded light calculation (sky/block)
+- [ ] **Differential testing**: compare generated chunks against vanilla (same seed) in CI
+- [ ] Decision: inherited vs own worldgen (close the open Phase 0 item)
 
-**Criterio de salida**: actualizar de 26.x a 26.(x+1) tomando ≤3 días-persona con el playbook, clientes 1.21+ conectando.
-
----
-
-## FASE 6 — Escalado y benchmarks (mes 14–18) · ⬜
-
-Demostrar la promesa de rendimiento con datos.
-
-- [ ] Benchmarks públicos vs Paper y Folia (mismos hardware/mundo/población)
-- [ ] Pregeneración de mundo a escala
-- [ ] 500+ jugadores en un mundo con features subset a 20 TPS
-- [ ] Optimización de ancho de banda (view distance dinámico, packet coalescing)
-- [ ] Decisión de arquitectura para "miles": sharding horizontal con proxy (Velocity/Bungee) + MultiPaper-style, o traductor nativo multi-versión propio
-- [ ] Instrumentación: métricas (tiempo de tick por región, chunk-gen, red) exportables
-
-**Criterio de salida**: benchmark reproducible publicado en la landing con ventaja documentada sobre Paper/Folia en escenarios realistas.
+**Exit criterion**: same seed → same chunk in Hyperion and vanilla (diff test suite), existing Anvil worlds loadable.
 
 ---
 
-## FASE 7 — Bedrock (opcional, mes 16–24) · ⬜
+## PHASE 3 — Multi-core simulation (month 8–12) · ⬜
 
-Protocolo RakNet + registries propios. Solo si Java está sólido y hay demanda.
+Where Hyperion separates from the rest: the single thread disappears.
 
-- [ ] RakNet base + cifrado ECDH/AES
-- [ ] Mapeo de entidades/bloques Java↔Bedrock
-- [ ] Skin system de Bedrock
+- [ ] **Region ticking**: independent chunk groups, each with its own thread (Folia/MCHPRS pattern)
+- [ ] **ECS** (`bevy_ecs` or own system): entities, components, systems — cache-friendly
+- [ ] **Physics and movement**: gravity, world collisions
+- [ ] **Fluids**: basic flow (water/lava) with per-region updates
+- [ ] **Redstone**: basic circuit (wire, torches, repeaters, comparators) — no global locks
+- [ ] **Basic mobs**: spawn/despawn, simple AI (zombies, skeletons), damage and death
+- [ ] **Inventories and interactive blocks**: chests, furnaces, basic crafting
+- [ ] **Cross-region interaction** ONLY via messages (ports, teleports) — no shared data
+- [ ] Profiling (perf/tracy) and internal benchmarks
 
-**Criterio de salida**: clientes Bedrock y Java en el mismo mundo (opcional de producto).
-
----
-
-## FASE 8 — Lanzamiento (mes 18–24) · ⬜
-
-Convertir el proyecto en producto con comunidad.
-
-- [ ] Landing page (Astro + Tailwind): hero, benchmarks, roadmap público, "primer plugin en 5 min"
-- [ ] Docs completas (Starlight/Docusaurus + rustdoc embebido)
-- [ ] Beta pública: servidor de demostración (hub/minijuegos)
-- [ ] Discord + directrices de contribución activas
-- [ ] v1.0.0: protocolo actual, worldgen 1:1 declarado, API estable de plugins
-
-**Criterio de salida**: v1.0.0 publicada, 100+ plugins de ejemplo creados por la comunidad, benchmarks en la portada.
+**Exit criterion**: 100+ players in a world with active simulation at stable 20 TPS, no global locks.
 
 ---
 
-## Riesgos y mitigaciones
+## PHASE 4 — Plugin API (month 10–14) · ⬜
 
-| Riesgo | Severidad | Mitigación |
+The differentiator: safe and simple plugins.
+
+- [ ] **WASM/WIT ABI**: stable plugin contract (`on_load`/`on_enable`/`on_disable` lifecycle)
+- [ ] **Runtime**: embedded `wasmtime`, capability sandbox (no system access unless granted)
+- [ ] **Events**: event system (player join, block break, chat…) with per-region dispatch
+- [ ] **Commands**: registration with Brigadier-style tree
+- [ ] **Scheduler**: async/sync tasks, scheduled per region
+- [ ] **Lua scripting** (MLua) as a simplicity layer: plugin in 20 lines
+- [ ] **Plugin SDK**: templates (cargo-generate), docs, examples
+- [ ] Safe plugin hot-reload (no `dlopen` — WASM unloads cleanly)
+
+**Exit criterion**: an example WASM plugin (command + event + scheduler) works end-to-end, documented on the landing page.
+
+---
+
+## PHASE 4.5 — Java compatibility (research, NOT priority) · ⬜
+
+Evaluate retrocompatibility with Bukkit/Spigot/Paper plugins without compromising the
+core. Full strategy: docs/COMPATIBILITY.md · ADR 0006.
+
+- [ ] **Path C PoC (TeaVM → WASM)**: compile a minimal plugin (JavaPlugin + onEnable + 1 command) to WASM with TeaVM
+- [ ] **Host imports PoC**: expose a Bukkit API subset (Player.send_message, command dispatch, permissions) as WASM host imports
+- [ ] **Execution PoC**: plugin running in wasmtime on Hyperion (API subset)
+- [ ] **Go/no-go criterion**: if features TeaVM does not support (reflection, threads, class-loading) block >X% of target plugins → degrade to Path B
+- [ ] **Plan B (Path B)**: embedded JVM PoC (`jni-rs`) + Bukkit API subset in Rust (cost precedent: Cardboard)
+
+**Exit criterion**: go/no-go decision documented with evidence; functional PoC (Path C or B) or decision to abandon. Does not block the main roadmap.
+
+---
+
+## PHASE 5 — Multi-version and assisted updates (month 12–16) · ⬜
+
+The idea of "adapting to each release easily" becomes a system.
+
+- [ ] **Block-state remapping** between versions (Pumpkin model: 1.21→26.x range)
+- [ ] **Automatic diff**: when a new version ships, compare JSONs → generate mappings
+- [ ] **Versioned codegen**: one release = one data commit + regenerate code
+- [ ] **LLM as diff assistant** (with mandatory verification: fuzzing + diff testing against vanilla)
+- [ ] Wide range (1.8+): evaluate ViaVersion proxy in front vs. own native translator (decision in Phase 6)
+- [ ] Document the "release playbook": exact steps to update to a new version
+
+**Exit criterion**: update from 26.x to 26.(x+1) taking ≤3 person-days with the playbook, 1.21+ clients connecting.
+
+---
+
+## PHASE 6 — Scaling and benchmarks (month 14–18) · ⬜
+
+Prove the performance promise with data.
+
+- [ ] Public benchmarks vs Paper and Folia (same hardware/world/population)
+- [ ] Large-scale world pregeneration
+- [ ] 500+ players in a world with feature subset at 20 TPS
+- [ ] Bandwidth optimization (dynamic view distance, packet coalescing)
+- [ ] Architecture decision for "thousands": horizontal sharding with proxy (Velocity/Bungee) + MultiPaper-style, or own multi-version native translator
+- [ ] Instrumentation: exportable metrics (tick time per region, chunk-gen, network)
+
+**Exit criterion**: reproducible benchmark published on the landing page with documented advantage over Paper/Folia in realistic scenarios.
+
+---
+
+## PHASE 7 — Bedrock (optional, month 16–24) · ⬜
+
+RakNet protocol + own registries. Only if Java is solid and there is demand.
+
+- [ ] Base RakNet + ECDH/AES encryption
+- [ ] Java↔Bedrock entity/block mapping
+- [ ] Bedrock skin system
+
+**Exit criterion**: Bedrock and Java clients in the same world (optional product goal).
+
+---
+
+## PHASE 8 — Launch (month 18–24) · ⬜
+
+Turn the project into a product with community.
+
+- [ ] Landing page (Astro + Tailwind): hero, benchmarks, public roadmap, "first plugin in 5 min"
+- [ ] Full docs (Starlight/Docusaurus + embedded rustdoc)
+- [ ] Public beta: demo server (hub/minigames)
+- [ ] Discord + active contribution guidelines
+- [ ] v1.0.0: current protocol, declared 1:1 worldgen, stable plugin API
+
+**Exit criterion**: v1.0.0 published, 100+ example plugins created by the community, benchmarks on the front page.
+
+---
+
+## Risks and mitigations
+
+| Risk | Severity | Mitigation |
 |---|---|---|
-| **Alcance** (el mayor): paridad vanilla completa es un proyecto de equipo de años (Pumpkin lleva 2 años sin 1.0) | 🔴 Alta | MVP = hub/minijuegos; declarar paridad por capas; features subset para v1 |
-| Mortandad de proyectos Rust MC (muchos mueren por alcance) | 🔴 Alta | Roadmap con hitos verificables, comunidad desde el día 1 |
-| Worldgen 1:1 completo (estructuras jigsaw) | 🟠 Media | Referencia cubiomes (MIT) + diff testing; estructuras en fases |
-| Multi-versión amplia (1.8+) | 🟠 Media | v1 rango corto (1.21+); ViaVersion delante como opción |
-| GPLv3 de Pumpkin: si se hereda código, el proyecto pasa a GPL | 🟠 Media | Decisión de licencia en Fase 0; código propio siempre que sea posible |
-| Rendimiento de WASM en plugins | 🟡 Baja | wasmtime JIT; scripting Lua para caminos calientes; benchmark en Fase 6 |
-| Dependencias abandonadas | 🟡 Baja | Lista blanca con mantenimiento verificado (docs/DEPENDENCIES.md); re-auditar cada fase |
+| **Scope** (the largest): full vanilla parity is a multi-year team project (Pumpkin has spent 2 years without 1.0) | 🔴 High | MVP = hub/minigames; declare parity by layers; feature subset for v1 |
+| Rust MC project mortality (many die from scope) | 🔴 High | Roadmap with verifiable milestones, community from day 1 |
+| Full 1:1 worldgen (jigsaw structures) | 🟠 Medium | cubiomes reference (MIT) + diff testing; structures in phases |
+| Wide multi-version (1.8+) | 🟠 Medium | v1 short range (1.21+); ViaVersion in front as an option |
+| Pumpkin GPLv3: if code is inherited, the project becomes GPL | 🟠 Medium | License decision in Phase 0; own code whenever possible |
+| WASM performance in plugins | 🟡 Low | wasmtime JIT; Lua scripting for hot paths; benchmark in Phase 6 |
+| Abandoned dependencies | 🟡 Low | Allowlist with verified maintenance (docs/DEPENDENCIES.md); re-audit each phase |
 
 ---
 
-## Decisiones abiertas (ADR pendientes)
+## Open decisions (pending ADRs)
 
-1. **Worldgen**: núcleo propio vs. cubiomes (MIT) vs. heredar de Pumpkin (GPL). *Fecha límite: Fase 2.*
-2. **ECS**: usar `bevy_ecs` vs. sistema ECS propio minimalista. *Fase 3.*
-3. **Licencia definitiva** si se incorpora código ajeno. *Fase 0.*
-4. **Rango de multi-versión** para v1: solo 26.x vs. 1.21+ como Pumpkin. *Fase 5.*
-5. **Bedrock**: incluir en v1.0 o posponer. *Fase 7.*
-
----
-
-## Métricas de éxito (definición de "lo logramos")
-
-- 20 TPS sostenidos con 500+ jugadores en un mundo con features subset (Fase 6)
-- Actualización de versión menor en ≤3 días-persona (Fase 5)
-- Plugin WASM de ejemplo funcional en <5 minutos para un desarrollador nuevo (Fase 4)
-- 100+ contribuidores y 10+ plugins comunitarios antes de v1.0 (Fase 8)
+1. **Worldgen**: own core vs. cubiomes (MIT) vs. inherit from Pumpkin (GPL). *Deadline: Phase 2.*
+2. **ECS**: use `bevy_ecs` vs. minimal own ECS system. *Phase 3.*
+3. **Final license** if third-party code is incorporated. *Phase 0.*
+4. **Multi-version range** for v1: only 26.x vs. 1.21+ like Pumpkin. *Phase 5.*
+5. **Bedrock**: include in v1.0 or defer. *Phase 7.*
 
 ---
 
-*Hyperion · MIT · Proyecto independiente, sin afiliación con Mojang/Microsoft.*
+## Success metrics (definition of "we made it")
+
+- Sustained 20 TPS with 500+ players in a world with feature subset (Phase 6)
+- Minor version update in ≤3 person-days (Phase 5)
+- Working example WASM plugin in <5 minutes for a new developer (Phase 4)
+- 100+ contributors and 10+ community plugins before v1.0 (Phase 8)
+
+---
+
+*Hyperion · MIT · Independent project, not affiliated with Mojang/Microsoft.*

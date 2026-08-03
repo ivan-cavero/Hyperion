@@ -1,11 +1,11 @@
 # tools/
 
-| Tool | Estado | Uso |
+| Tool | Status | Use |
 |---|---|---|
-| [`mc-ref/`](mc-ref/README.md) | listo | Genera registries/tags/NBT de join desde el server.jar 26.2 |
-| `extract` | pendiente (Fase 2) | Pipeline genérico de datos Mojang → JSON versionado |
-| `codegen` | pendiente (Fase 2) | structs/coders Rust desde JSON |
-| `packet_inspector` | pendiente | Depurar tráfico real vs cliente vanilla |
-| `stresser` | pendiente | Simular jugadores para benchmarks |
+| [`mc-ref/`](mc-ref/README.md) | ready | Generates registries/tags/NBT for join from the 26.2 server.jar |
+| `extract` | pending (Phase 2) | Generic Mojang data → versioned JSON pipeline |
+| `codegen` | pending (Phase 2) | Rust structs/coders from JSON |
+| `packet_inspector` | pending | Debug real traffic vs vanilla client |
+| `stresser` | pending | Simulate players for benchmarks |
 
-Ver `mc-ref/README.md` para regenerar `join_data/generated.rs` y `registry_nbt.bin`.
+See `mc-ref/README.md` to regenerate `join_data/generated.rs` and `registry_nbt.bin`.

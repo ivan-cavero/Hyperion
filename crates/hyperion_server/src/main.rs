@@ -1,30 +1,38 @@
 //! Hyperion server — entry point.
 //!
-//! Phase 1: starts the async network (tokio) and handles the Handshake →
-//! Status flow. Supports both online-mode (Mojang authentication) and
-//! offline-mode (unauthenticated).
+//! Phase 1: starts the async network (tokio) and handles Handshake →
+//! Status / Login → Configuration → Play. Supports both online-mode
+//! (Mojang authentication) and offline-mode (unauthenticated).
+//!
+//! Configuration is loaded from `server.properties` (Minecraft-style).
+//! CLI flags override file values after the file is loaded.
 //!
 //! Usage:
-//!   hyperion-server [BIND_ADDRESS] [--online-mode | --offline-mode]
+//!   hyperion-server [OPTIONS] [BIND_ADDRESS]
 //!
 //! Log level is controlled via `RUST_LOG` (default: `info`).
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use hyperion_core::VERSION;
-use hyperion_server::config::ServerConfig;
+use hyperion_server::config::{DEFAULT_CONFIG_PATH, ServerConfig};
 use hyperion_server::network::serve;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 const USAGE: &str = "\
-Usage: hyperion-server [BIND_ADDRESS] [--online-mode | --offline-mode]
+Usage: hyperion-server [OPTIONS] [BIND_ADDRESS]
+
+Configuration is read from server.properties (created with defaults on first run).
+CLI flags override values from the file.
 
 Options:
-  BIND_ADDRESS     address to listen on (default: 0.0.0.0:25565)
-  --online-mode    authenticate players against Mojang (encrypted sessions) (default)
-  --offline-mode   allow unauthenticated players
-  --help           show this help";
+  BIND_ADDRESS         host:port to listen on (overrides server-ip / server-port)
+  -c, --config PATH    path to server.properties (default: server.properties)
+  --online-mode        authenticate players against Mojang (encrypted sessions)
+  --offline-mode       allow unauthenticated players
+  --help               show this help";
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -39,16 +47,31 @@ async fn main() -> ExitCode {
 
     info!("Hyperion {VERSION} — native Minecraft server in Rust");
 
-    let mut config = ServerConfig::default();
-    for argument in std::env::args().skip(1) {
+    let mut config_path = PathBuf::from(DEFAULT_CONFIG_PATH);
+    let mut online_mode_override: Option<bool> = None;
+    let mut bind_override: Option<String> = None;
+
+    let mut args = std::env::args().skip(1).peekable();
+    while let Some(argument) = args.next() {
         match argument.as_str() {
-            "--online-mode" => config.online_mode = true,
-            "--offline-mode" => config.online_mode = false,
-            "--help" => {
+            "--online-mode" => online_mode_override = Some(true),
+            "--offline-mode" => online_mode_override = Some(false),
+            "--help" | "-h" => {
                 println!("{USAGE}");
                 return ExitCode::SUCCESS;
             }
-            value if !value.starts_with('-') => config.bind_address = value.to_owned(),
+            "-c" | "--config" => {
+                let Some(path) = args.next() else {
+                    error!("--config requires a path argument");
+                    println!("{USAGE}");
+                    return ExitCode::FAILURE;
+                };
+                config_path = PathBuf::from(path);
+            }
+            value if value.starts_with("--config=") => {
+                config_path = PathBuf::from(value.trim_start_matches("--config="));
+            }
+            value if !value.starts_with('-') => bind_override = Some(value.to_owned()),
             unknown => {
                 error!("unknown argument: {unknown}");
                 println!("{USAGE}");
@@ -57,9 +80,36 @@ async fn main() -> ExitCode {
         }
     }
 
+    let mut config = match ServerConfig::load(&config_path) {
+        Ok(config) => {
+            info!(path = %config_path.display(), "loaded server.properties");
+            config
+        }
+        Err(error) => {
+            error!("failed to load configuration: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    if let Some(online_mode) = online_mode_override {
+        config.online_mode = online_mode;
+    }
+    if let Some(bind) = bind_override
+        && let Err(error) = apply_bind_override(&mut config, &bind)
+    {
+        error!("{error}");
+        println!("{USAGE}");
+        return ExitCode::FAILURE;
+    }
+
     info!(
-        bind_address = %config.bind_address,
+        config_path = %config_path.display(),
+        bind_address = %config.bind_address(),
         online_mode = config.online_mode,
+        max_players = config.max_players,
+        motd = %config.motd,
+        view_distance = config.view_distance,
+        simulation_distance = config.simulation_distance,
         compression_threshold = config.compression_threshold,
         session_server = %config.session_server_url,
         "starting server"
@@ -72,4 +122,53 @@ async fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Parses a `host:port` override into `server_ip` / `server_port`.
+///
+/// Accepts `25565`, `:25565`, `127.0.0.1:25565`, and `[::1]:25565`.
+fn apply_bind_override(config: &mut ServerConfig, bind: &str) -> Result<(), String> {
+    if let Ok(port) = bind.parse::<u16>() {
+        config.server_ip.clear();
+        config.server_port = port;
+        return Ok(());
+    }
+
+    // Bracketed IPv6: [::1]:25565
+    if let Some(rest) = bind.strip_prefix('[') {
+        let Some((host, port_part)) = rest.split_once("]:") else {
+            return Err(format!(
+                "invalid BIND_ADDRESS {bind:?}: expected [ipv6]:port"
+            ));
+        };
+        let port: u16 = port_part
+            .parse()
+            .map_err(|_| format!("invalid port in BIND_ADDRESS {bind:?}"))?;
+        config.server_ip = host.to_owned();
+        config.server_port = port;
+        return Ok(());
+    }
+
+    // host:port — split on the last colon so bare IPv6 without brackets is rejected.
+    if let Some((host, port_part)) = bind.rsplit_once(':') {
+        if host.contains(':') {
+            return Err(format!(
+                "invalid BIND_ADDRESS {bind:?}: use [ipv6]:port for IPv6"
+            ));
+        }
+        let port: u16 = port_part
+            .parse()
+            .map_err(|_| format!("invalid port in BIND_ADDRESS {bind:?}"))?;
+        config.server_ip = if host.is_empty() || host == "0.0.0.0" {
+            String::new()
+        } else {
+            host.to_owned()
+        };
+        config.server_port = port;
+        return Ok(());
+    }
+
+    Err(format!(
+        "invalid BIND_ADDRESS {bind:?}: expected host:port or port"
+    ))
 }

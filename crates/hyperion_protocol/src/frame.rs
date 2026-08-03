@@ -33,8 +33,8 @@ pub struct FrameSplit {
     pub total_consumed: usize,
 }
 
-/// Separa el prefijo de longitud (VarInt de hasta 3 bytes) del cuerpo de la
-/// trama. Devuelve `Ok(None)` si el buffer aún no contiene la trama completa.
+/// Splits the length prefix (VarInt, up to 3 bytes) from the frame body.
+/// Returns `Ok(None)` if the buffer does not yet hold a complete frame.
 pub fn split_frame(input: &[u8]) -> Result<Option<FrameSplit>, ProtocolError> {
     let (packet_length, length_bytes) =
         match decode_var_i32(input, 0, MAX_PACKET_LENGTH_VARINT_BYTES) {
@@ -539,7 +539,7 @@ fn encode_unsigned_var_i32(value: u32) -> Vec<u8> {
     buffer[..index].to_vec()
 }
 
-/// Decodifica un VarInt desde `input[offset..]`, limitado a `maximum_bytes`.
+/// Decodes a VarInt from `input[offset..]`, limited to `maximum_bytes`.
 pub fn decode_var_i32(
     input: &[u8],
     offset: usize,

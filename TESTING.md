@@ -1,75 +1,74 @@
-# Testing en Hyperion
+# Testing in Hyperion
 
-Cómo se testea Hyperion, qué ejecuta cada comando y dónde vive cada test.
+How Hyperion is tested, what each command runs, and where each test lives.
 
-## Matriz rápida
+## Quick matrix
 
-| Comando | Qué cubre | Uso |
+| Command | What it covers | Use |
 |---|---|---|
-| `cargo test --workspace` | Todos los tests (unit + integración + doctests) | Verificación rápida tras un cambio |
-| `cargo nextest run --workspace` | Lo mismo, pero paralelo, con mejor aislamiento y salida por test | Desarrollo diario y CI |
-| `cargo clippy --workspace --all-targets -- -D warnings` | Lints, con warnings como errores | Antes de cada commit/PR (lo exige el CI) |
-| `cargo fmt --all -- --check` | Formato | Antes de cada commit/PR |
-| `cargo llvm-cov --workspace` | Cobertura de líneas/regiones | Para medir huecos de cobertura |
-| `cargo llvm-cov --workspace --lcov --output-path lcov.info` | Reporte en formato LCOV | CI (sube a Codecov) |
-| `cargo +nightly fuzz run <target>` (en `crates/hyperion_protocol/fuzz`) | Fuzzing de parsers de red | Tras tocar cualquier parser (ver abajo) |
-| `cargo audit` / `cargo deny check` | Vulnerabilidades / licencias | CI |
+| `cargo test --workspace` | All tests (unit + integration + doctests) | Quick check after a change |
+| `cargo nextest run --workspace` | Same, but parallel, with better isolation and per-test output | Daily development and CI |
+| `cargo clippy --workspace --all-targets -- -D warnings` | Lints, with warnings as errors | Before every commit/PR (required by CI) |
+| `cargo fmt --all -- --check` | Formatting | Before every commit/PR |
+| `cargo llvm-cov --workspace` | Line/region coverage | To measure coverage gaps |
+| `cargo llvm-cov --workspace --lcov --output-path lcov.info` | Report in LCOV format | CI (uploads to Codecov) |
+| `cargo +nightly fuzz run <target>` (in `crates/hyperion_protocol/fuzz`) | Fuzzing of network parsers | After touching any parser (see below) |
+| `cargo audit` / `cargo deny check` | Vulnerabilities / licenses | CI |
 
-Los comandos de la matriz se ejecutan desde la raíz del workspace, salvo que
-se indique otro directorio.
+Matrix commands run from the workspace root, unless another directory is indicated.
 
-## Dónde vive cada test
+## Where each test lives
 
 ```
-crates/hyperion_protocol/src/*.rs          # unit tests junto al código (round-trips de codificación)
-crates/hyperion_protocol/tests/            # integración del protocolo (ej. handshake completo)
-crates/hyperion_protocol/fuzz/fuzz_targets/# fuzzing obligatorio de parsers de red
-crates/hyperion_server/src/                # unit tests inline donde aplica
-crates/hyperion_server/tests/              # integración end-to-end sobre sockets TCP reales
-crates/hyperion_server/tests/common/       # infraestructura compartida (MockClient, mock session server)
+crates/hyperion_protocol/src/*.rs          # unit tests next to the code (encoding round-trips)
+crates/hyperion_protocol/tests/            # protocol integration (e.g. full handshake)
+crates/hyperion_protocol/fuzz/fuzz_targets/# mandatory fuzzing of network parsers
+crates/hyperion_server/src/                # inline unit tests where applicable
+crates/hyperion_server/tests/              # end-to-end integration over real TCP sockets
+crates/hyperion_server/tests/common/       # shared infrastructure (MockClient, mock session server)
 ```
 
-### Convenciones por capa
+### Conventions by layer
 
-- **Protocolo** (`hyperion_protocol`): cada función de codificación/decodificación
-  lleva tests de round-trip (encode → decode → valor original) y de bordes
-  (truncado, var-int inválido, longitudes fuera de rango). Los parsers de
-  entrada de red tienen además un target de fuzzing.
-- **Servidor** (`hyperion_server`): la lógica de red se testea como *caja
-  negra* desde `tests/`: un `MockClient` (en `tests/common/`) habla el
-  protocolo real —incluidos cifrado AES/CFB8 y compresión zlib— contra un
-  listener real, y cada test ejecuta `handle_connection` en una tarea tokio.
-  Los flujos que llaman a Mojang usan `mock_session_server` (HTTP en memoria).
-- **Placeholders** (`hyperion_core`, `hyperion_world`, …): tests triviales
-  hasta que tengan lógica real.
+- **Protocol** (`hyperion_protocol`): every encode/decode function has round-trip
+  tests (encode → decode → original value) and edge cases (truncated, invalid
+  var-int, out-of-range lengths). Network input parsers also have a fuzzing
+  target.
+- **Server** (`hyperion_server`): network logic is tested as a *black box* from
+  `tests/`: a `MockClient` (in `tests/common/`) speaks the real protocol
+  —including AES/CFB8 encryption and zlib compression— against a real listener,
+  and each test runs `handle_connection` in a tokio task. Flows that call Mojang
+  use `mock_session_server` (in-memory HTTP).
+- **Placeholders** (`hyperion_core`, `hyperion_world`, …): trivial tests until
+  they have real logic.
 
-### Añadir un test nuevo
+### Adding a new test
 
-1. **Unit**: junto al código, `#[cfg(test)] mod tests`.
-2. **Integración de red**: nuevo archivo en `crates/hyperion_server/tests/`
-   con `mod common;` en la cabecera; reutiliza `MockClient` y los helpers de
-   `tests/common/mod.rs` (no los reimplementes).
-3. **Parser nuevo en el protocolo**: unit tests de round-trip **y** un target
-   en `crates/hyperion_protocol/fuzz/fuzz_targets/` + entrada en la matriz del
-   job `fuzz` de CI.
+1. **Unit**: next to the code, `#[cfg(test)] mod tests`.
+2. **Network integration**: new file in `crates/hyperion_server/tests/` with
+   `mod common;` at the top; reuse `MockClient` and the helpers in
+   `tests/common/mod.rs` (do not reimplement them).
+3. **New protocol parser**: round-trip unit tests **and** a target in
+   `crates/hyperion_protocol/fuzz/fuzz_targets/` + entry in the CI `fuzz` job
+   matrix.
 
-## Cobertura
+## Coverage
 
-Baseline actual (medido con `cargo llvm-cov --workspace`):
+Current baseline (measured with `cargo llvm-cov --workspace`):
 
-- **Líneas: ~89 %** · Regiones: ~86 % (sin contar `main.rs`, ver abajo).
-- `hyperion_server/src/main.rs` figura al 0 % porque es el entry point del
-  binario y los tests ejercitan la librería. Es un wrapper delgado y se acepta
-  sin cobertura; si algún día crece, añadir un smoke test con `assert_cmd`.
-- Huecos conocidos que merecen tests cuando se toque esa zona:
-  - `network/mod.rs` (~32 %): `serve()` (bucle de aceptación) y las ramas de
-    logging de errores de conexión no están cubiertas.
-  - `network/login.rs` (~76 %): fallos de descifrado RSA del shared secret,
-    longitudes de secret inválidas y errores de generación de claves.
-  - `protocol/status.rs` (~82 %) y `protocol/compression.rs` (~91 %): bordes
-    de payloads malformados.
+- **Lines: ~89 %** · Regions: ~86 % (excluding `main.rs`, see below).
+- `hyperion_server/src/main.rs` shows 0 % because it is the binary entry point
+  and tests exercise the library. It is a thin wrapper and is accepted without
+  coverage; if it ever grows, add a smoke test with `assert_cmd`.
+- Known gaps that deserve tests when that area is touched:
+  - `network/mod.rs` (~32 %): `serve()` (accept loop) and connection error
+    logging branches are not covered.
+  - `network/login.rs` (~76 %): RSA shared-secret decrypt failures, invalid
+    secret lengths, and key generation errors.
+  - `protocol/status.rs` (~82 %) and `protocol/compression.rs` (~91 %): edges
+    of malformed payloads.
 
-Para regenerar el baseline localmente:
+To regenerate the baseline locally:
 
 ```sh
 cargo llvm-cov --workspace
@@ -77,25 +76,25 @@ cargo llvm-cov --workspace
 
 ## Fuzzing
 
-Obligatorio para todo parser que reciba bytes de red. Targets actuales:
+Mandatory for every parser that receives network bytes. Current targets:
 `frame`, `handshake`, `status`, `login`.
 
 ```sh
 cd crates/hyperion_protocol/fuzz
-cargo +nightly fuzz run frame        # en bucle hasta Ctrl-C
-cargo +nightly fuzz run frame -- -max_total_time=60   # sesión acotada
+cargo +nightly fuzz run frame        # loop until Ctrl-C
+cargo +nightly fuzz run frame -- -max_total_time=60   # bounded session
 ```
 
-El CI ejecuta un smoke test de 30 s por target en cada PR. Los crashes se
-suben como artefacto (`fuzz-artifacts-*`).
+CI runs a 30 s smoke test per target on every PR. Crashes are uploaded as
+artifacts (`fuzz-artifacts-*`).
 
-## Herramientas locales
+## Local tools
 
-`cargo-nextest` y `cargo-llvm-cov` se instalan con:
+`cargo-nextest` and `cargo-llvm-cov` are installed with:
 
 ```sh
 cargo install cargo-nextest --locked
 cargo install cargo-llvm-cov --locked
 ```
 
-(o vía `taiki-e/install-action` en CI, que es lo que usa el workflow).
+(or via `taiki-e/install-action` in CI, which is what the workflow uses).

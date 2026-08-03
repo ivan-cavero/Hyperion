@@ -20,25 +20,25 @@ pub const SHARED_SECRET_LENGTH: usize = 16;
 /// Size of the random challenge token sent with the Encryption Request.
 pub const VERIFY_TOKEN_LENGTH: usize = 4;
 
-/// Stream de AES-128/CFB8.
+/// AES-128/CFB8 stream cipher.
 ///
-/// Mantiene el registro de desplazamiento de 16 bytes entre llamadas, de modo
-/// que el cifrado/descifrado es continuo a lo largo de la conexión. Se usa una
-/// instancia para cada dirección (cifrado de salida, descifrado de entrada).
+/// Keeps the 16-byte shift register between calls so encryption/decryption is
+/// continuous for the life of the connection. Use one instance per direction
+/// (outbound encrypt, inbound decrypt).
 pub struct Cfb8Stream {
     cipher: Aes128,
     feedback: Block<Aes128>,
 }
 
 impl Cfb8Stream {
-    /// Crea el stream con la clave (= IV) dada.
+    /// Creates the stream with the given key (= IV).
     pub fn new(key: &[u8; SHARED_SECRET_LENGTH]) -> Self {
         let cipher = Aes128::new_from_slice(key).expect("AES-128 requires a 16-byte key");
         let feedback = Block::<Aes128>::clone_from_slice(key);
         Self { cipher, feedback }
     }
 
-    /// Cifra `data` in-place, actualizando el registro de desplazamiento.
+    /// Encrypts `data` in place, updating the shift register.
     pub fn encrypt(&mut self, data: &mut [u8]) {
         for byte in data {
             let ciphertext_byte = self.keystream_byte() ^ *byte;
@@ -47,7 +47,7 @@ impl Cfb8Stream {
         }
     }
 
-    /// Descifra `data` in-place, actualizando el registro de desplazamiento.
+    /// Decrypts `data` in place, updating the shift register.
     pub fn decrypt(&mut self, data: &mut [u8]) {
         for byte in data {
             let ciphertext_byte = *byte;
@@ -68,8 +68,8 @@ impl Cfb8Stream {
     }
 }
 
-/// Genera un keypair RSA de 1024 bits y devuelve la clave pública en DER
-/// SubjectPublicKeyInfo junto con la clave privada.
+/// Generates a 1024-bit RSA key pair and returns the public key as DER
+/// SubjectPublicKeyInfo together with the private key.
 pub fn generate_rsa_keypair() -> Result<(Vec<u8>, RsaPrivateKey), ProtocolError> {
     let private_key = RsaPrivateKey::new(&mut OsRng, 1024)
         .map_err(|error| ProtocolError::Crypto(error.to_string()))?;
@@ -83,7 +83,7 @@ pub fn generate_rsa_keypair() -> Result<(Vec<u8>, RsaPrivateKey), ProtocolError>
     Ok((public_key_der, private_key))
 }
 
-/// Descifra con RSA PKCS#1 v1.5 (lo que el cliente envía con la clave pública).
+/// Decrypts with RSA PKCS#1 v1.5 (what the client sends using the public key).
 pub fn decrypt_pkcs1v15(
     private_key: &RsaPrivateKey,
     ciphertext: &[u8],
@@ -174,8 +174,8 @@ mod tests {
 
     #[test]
     fn cfb8_matches_reference_stream() {
-        // Vector de referencia con clave == IV, como en Minecraft (el shared
-        // secret es a la vez clave AES-128 e IV).
+        // Reference vector with key == IV, as in Minecraft (the shared secret
+        // is both the AES-128 key and the IV).
         let key: [u8; 16] = from_hex("2b7e151628aed2a6abf7158809cf4f3c")
             .try_into()
             .unwrap();
@@ -224,7 +224,7 @@ mod tests {
             "5d5bd6e533cb847b128e247ac26c13f7642c988f"
         );
 
-        // Hash con el bit alto puesto → representación negativa.
+        // Hash with the high bit set → negative signed-hex representation.
         let negative_secret = from_hex("ffeeddccbbaa99887766554433221100");
         let negative_public_key = {
             let mut key = vec![0x80];

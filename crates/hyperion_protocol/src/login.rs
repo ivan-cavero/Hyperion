@@ -1,8 +1,8 @@
-//! Paquetes del estado Login (protocolo 776 / 26.2).
+//! Login-state packets (protocol 776 / 26.2).
 //!
-//! Cubre Login Start (serverbound), Encryption Request/Response, Set
-//! Compression, Login Success (con el Session ID añadido en 26.2), Login
-//! Acknowledged y Disconnect. Los flujos cifrados se implementan en `crypto`.
+//! Covers Login Start (serverbound), Encryption Request/Response, Set
+//! Compression, Login Success (including the Session ID added in 26.2), Login
+//! Acknowledged, and Disconnect. Encrypted wire flows live in `crypto`.
 
 use uuid::Uuid;
 
@@ -29,51 +29,51 @@ pub const MAX_PROPERTY_SIGNATURE_UTF16_UNITS: usize = 1024;
 pub const MAX_SERVER_ID_UTF16_UNITS: usize = 20;
 pub const MAX_REASON_UTF16_UNITS: usize = 32_767;
 
-/// Límites de los byte arrays cifrados (RSA-1024 produce 128 bytes; se da
-/// margen sin perder el límite del protocolo).
+/// Limits for encrypted byte arrays (RSA-1024 yields 128 bytes; headroom is
+/// kept without exceeding the protocol cap).
 pub const MAX_PUBLIC_KEY_LENGTH: usize = 512;
 pub const MAX_VERIFY_TOKEN_LENGTH: usize = 128;
 pub const MAX_SHARED_SECRET_LENGTH: usize = 512;
 
-/// El paquete serverbound Login Start.
+/// Serverbound Login Start packet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoginStart {
-    /// Nombre de usuario declarado por el cliente.
+    /// Username declared by the client.
     pub username: String,
-    /// UUID declarado por el cliente (ignorado por el servidor vanilla).
+    /// UUID declared by the client (ignored by the vanilla server).
     pub uuid: Uuid,
 }
 
-/// El paquete clientbound Encryption Request.
+/// Clientbound Encryption Request packet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncryptionRequest {
-    /// Server ID (cadena vacía en los servidores modernos).
+    /// Server ID (empty string on modern servers).
     pub server_id: String,
-    /// Clave pública del servidor en DER SubjectPublicKeyInfo.
+    /// Server public key as DER SubjectPublicKeyInfo.
     pub public_key: Vec<u8>,
-    /// Token aleatorio que el cliente debe devolver cifrado.
+    /// Random token the client must return encrypted.
     pub verify_token: Vec<u8>,
-    /// Si el cliente debe autenticarse contra la session server de Mojang.
+    /// Whether the client must authenticate with Mojang's session server.
     pub should_authenticate: bool,
 }
 
-/// El paquete serverbound Encryption Response.
+/// Serverbound Encryption Response packet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncryptionResponse {
-    /// Shared secret de 16 bytes cifrado con RSA.
+    /// 16-byte shared secret encrypted with RSA.
     pub shared_secret: Vec<u8>,
-    /// Verify token cifrado con RSA.
+    /// Verify token encrypted with RSA.
     pub verify_token: Vec<u8>,
 }
 
-/// El paquete clientbound Set Compression.
+/// Clientbound Set Compression packet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SetCompression {
-    /// Umbral a partir del cual se comprimen los paquetes.
+    /// Threshold above which packets are compressed.
     pub threshold: i32,
 }
 
-/// Una propiedad del perfil (p. ej. la textura del skin).
+/// A game-profile property (e.g. the skin texture).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameProfileProperty {
     pub name: String,
@@ -81,7 +81,7 @@ pub struct GameProfileProperty {
     pub signature: Option<String>,
 }
 
-/// El perfil del jugador enviado en Login Success.
+/// Player profile sent in Login Success.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameProfile {
     pub uuid: Uuid,
@@ -89,15 +89,15 @@ pub struct GameProfile {
     pub properties: Vec<GameProfileProperty>,
 }
 
-/// El paquete clientbound Login Success.
+/// Clientbound Login Success packet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoginSuccess {
     pub profile: GameProfile,
-    /// Session ID añadido en el protocolo 776 (26.2).
+    /// Session ID added in protocol 776 (26.2).
     pub session_id: Uuid,
 }
 
-/// Decodifica un Login Start.
+/// Decodes a Login Start packet.
 pub fn decode_login_start(frame: &PacketFrame) -> Result<LoginStart, ProtocolError> {
     if frame.packet_id != LOGIN_START_PACKET_ID {
         return Err(ProtocolError::InvalidPacketId);
@@ -123,7 +123,7 @@ fn is_valid_username(username: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
-/// Decodifica un Encryption Response.
+/// Decodes an Encryption Response packet.
 pub fn decode_encryption_response(
     frame: &PacketFrame,
 ) -> Result<EncryptionResponse, ProtocolError> {
@@ -142,7 +142,7 @@ pub fn decode_encryption_response(
     })
 }
 
-/// Valida un Login Acknowledged (debe estar vacío).
+/// Validates a Login Acknowledged packet (must be empty).
 pub fn decode_login_acknowledged(frame: &PacketFrame) -> Result<(), ProtocolError> {
     if frame.packet_id != LOGIN_ACKNOWLEDGED_PACKET_ID {
         return Err(ProtocolError::InvalidPacketId);
@@ -154,7 +154,7 @@ pub fn decode_login_acknowledged(frame: &PacketFrame) -> Result<(), ProtocolErro
     Ok(())
 }
 
-/// Codifica el payload de un Encryption Request (sin el prefijo de trama).
+/// Encodes an Encryption Request payload (without the frame prefix).
 pub fn encode_encryption_request_payload(
     request: &EncryptionRequest,
 ) -> Result<Vec<u8>, ProtocolError> {
@@ -169,7 +169,7 @@ pub fn encode_encryption_request_payload(
     Ok(payload)
 }
 
-/// Codifica un Encryption Request completo (trama).
+/// Encodes a complete Encryption Request frame.
 pub fn encode_encryption_request(request: &EncryptionRequest) -> Result<Vec<u8>, ProtocolError> {
     encode_frame(
         ENCRYPTION_REQUEST_PACKET_ID,
@@ -177,12 +177,12 @@ pub fn encode_encryption_request(request: &EncryptionRequest) -> Result<Vec<u8>,
     )
 }
 
-/// Codifica un Set Compression completo (trama).
+/// Encodes a complete Set Compression frame.
 pub fn encode_set_compression(threshold: i32) -> Result<Vec<u8>, ProtocolError> {
     encode_frame(SET_COMPRESSION_PACKET_ID, &encode_var_i32(threshold))
 }
 
-/// Codifica el payload de un Login Success (perfil + session ID).
+/// Encodes a Login Success payload (profile + session ID).
 pub fn encode_login_success_payload(success: &LoginSuccess) -> Result<Vec<u8>, ProtocolError> {
     if success.profile.properties.len() > MAX_PROPERTIES {
         return Err(ProtocolError::InvalidPacketPayload);
@@ -232,14 +232,13 @@ pub fn encode_login_success(success: &LoginSuccess) -> Result<Vec<u8>, ProtocolE
     )
 }
 
-/// Codifica el payload de un Disconnect de login (el motivo como JSON).
+/// Encodes a login Disconnect payload (reason as a JSON text component).
 pub fn encode_login_disconnect_payload(reason: &str) -> Result<Vec<u8>, ProtocolError> {
     let reason_json = serde_json::json!({ "text": reason }).to_string();
     encode_string(&reason_json, MAX_REASON_UTF16_UNITS)
 }
 
-/// Codifica un Disconnect de login completo (trama) con un componente de
-/// texto como motivo.
+/// Encodes a complete login Disconnect frame with a text-component reason.
 pub fn encode_login_disconnect(reason: &str) -> Result<Vec<u8>, ProtocolError> {
     encode_frame(
         LOGIN_DISCONNECT_PACKET_ID,

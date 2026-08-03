@@ -43,6 +43,9 @@ pub const DEFAULT_VIEW_DISTANCE: i32 = 8;
 /// Default advertised player cap.
 pub const DEFAULT_MAX_PLAYERS: i32 = 20;
 
+/// Default concurrent TCP connection cap (anti-DoS backpressure).
+pub const DEFAULT_MAX_CONNECTIONS: usize = 1024;
+
 /// Default spawn Y until worldgen provides a real surface.
 pub const DEFAULT_SPAWN_Y: i32 = 100;
 
@@ -72,6 +75,9 @@ pub struct ServerConfig {
     /// Maximum number of players advertised in the status response
     /// (`max-players`).
     pub max_players: i32,
+    /// Maximum concurrent TCP connections accepted at once
+    /// (`max-connections`). Excess clients wait in the OS backlog.
+    pub max_connections: usize,
     /// Message of the day shown in the server list and the tab list (`motd`).
     pub motd: String,
     /// Y level of the default spawn point (Hyperion extension until worldgen).
@@ -93,6 +99,7 @@ impl Default for ServerConfig {
             view_distance: DEFAULT_VIEW_DISTANCE,
             simulation_distance: DEFAULT_VIEW_DISTANCE,
             max_players: DEFAULT_MAX_PLAYERS,
+            max_connections: DEFAULT_MAX_CONNECTIONS,
             motd: DEFAULT_MOTD.to_owned(),
             spawn_y: DEFAULT_SPAWN_Y,
             keep_alive_interval_seconds: DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS,
@@ -173,6 +180,12 @@ impl ServerConfig {
         if let Some(value) = map.get("max-players") {
             config.max_players = parse_value(value, "max-players")?;
         }
+        if let Some(value) = map.get("max-connections") {
+            config.max_connections = parse_value(value, "max-connections")?;
+            if config.max_connections == 0 {
+                return Err("max-connections: must be at least 1".to_owned());
+            }
+        }
         if let Some(value) = map.get("motd") {
             config.motd = value.clone();
         }
@@ -192,13 +205,13 @@ impl ServerConfig {
     /// Writes this configuration to `path` in vanilla properties format.
     pub fn write(&self, path: impl AsRef<Path>) -> Result<(), ConfigError> {
         let path = path.as_ref();
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent).map_err(|source| ConfigError::Io {
-                    path: path.to_path_buf(),
-                    source,
-                })?;
-            }
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|source| ConfigError::Io {
+                path: path.to_path_buf(),
+                source,
+            })?;
         }
         fs::write(path, self.to_properties()).map_err(|source| ConfigError::Io {
             path: path.to_path_buf(),
@@ -228,6 +241,8 @@ server-port={}
 online-mode={}
 # Max players advertised in the multiplayer server list.
 max-players={}
+# Max concurrent TCP connections (backpressure; Hyperion extension).
+max-connections={}
 # Message of the day (server list + tab list).
 motd={}
 # Client chunk render distance.
@@ -249,6 +264,7 @@ keep-alive-timeout={}
             self.server_port,
             self.online_mode,
             self.max_players,
+            self.max_connections,
             escape_properties_value(&self.motd),
             self.view_distance,
             self.simulation_distance,
@@ -404,6 +420,7 @@ mod tests {
         assert_eq!(loaded.view_distance, original.view_distance);
         assert_eq!(loaded.simulation_distance, original.simulation_distance);
         assert_eq!(loaded.max_players, original.max_players);
+        assert_eq!(loaded.max_connections, original.max_connections);
         assert_eq!(loaded.motd, original.motd);
         assert_eq!(loaded.spawn_y, original.spawn_y);
         assert_eq!(
