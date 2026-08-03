@@ -96,9 +96,7 @@ pub fn decode_ping_request(frame: &PacketFrame) -> Result<PingRequest, ProtocolE
         return Err(ProtocolError::InvalidPacketPayload);
     }
 
-    let timestamp_bytes: [u8; 8] = frame
-        .payload
-        .as_slice()
+    let timestamp_bytes: [u8; 8] = (&frame.payload[..])
         .try_into()
         .map_err(|_| ProtocolError::InvalidPacketPayload)?;
 

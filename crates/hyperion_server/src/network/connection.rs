@@ -6,7 +6,7 @@
 
 use std::io;
 
-use bytes::{Buf, BytesMut};
+use bytes::{Bytes, BytesMut};
 use hyperion_protocol::{
     Cfb8Stream, PacketFrame, ProtocolError, SHARED_SECRET_LENGTH, compress_body,
     decode_packet_data, decompress_body, encode_var_i32, split_frame,
@@ -64,12 +64,23 @@ impl Connection {
     }
 
     /// Reads the next frame, applying decryption and decompression as needed.
+    ///
+    /// This is a zero-copy path: the frame body is extracted from the read
+    /// buffer via `BytesMut::split_to` and sliced into a reference-counted
+    /// `Bytes` without copying the payload bytes.
     pub(crate) async fn read_frame(&mut self) -> Result<PacketFrame, ConnectionError> {
-        let body = loop {
+        let raw_body: Bytes = loop {
             match split_frame(&self.buffer[..]) {
-                Ok(Some((body, consumed_bytes))) => {
-                    self.buffer.advance(consumed_bytes);
-                    break body;
+                Ok(Some(split)) => {
+                    // Split the consumed bytes off the buffer (zero-copy:
+                    // `split_to` returns a `BytesMut` that shares the
+                    // underlying allocation with `self.buffer`).
+                    let mut frame_data = self.buffer.split_to(split.total_consumed);
+                    // Discard the length-prefix portion, leaving only the
+                    // body (packet ID + payload) as a reference-counted
+                    // `Bytes` — no byte copy.
+                    let _ = frame_data.split_to(split.body_offset);
+                    break frame_data.freeze();
                 }
                 Ok(None) => {
                     if self.read_and_decrypt_chunk().await? == 0 {
@@ -81,9 +92,10 @@ impl Connection {
         };
 
         let packet_body = if self.compression_threshold.is_some() {
-            decompress_body(&body).map_err(ConnectionError::Protocol)?
+            // Decompression allocates; this is unavoidable with zlib.
+            Bytes::from(decompress_body(&raw_body).map_err(ConnectionError::Protocol)?)
         } else {
-            body
+            raw_body
         };
 
         decode_packet_data(&packet_body).map_err(ConnectionError::Protocol)

@@ -262,6 +262,7 @@ pub fn offline_mode_uuid(username: &str) -> Uuid {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::Bytes;
 
     fn decode_frame_payload(frame: &[u8]) -> (PacketFrame, usize) {
         crate::frame::decode_frame(frame).expect("frame should decode")
@@ -317,7 +318,7 @@ mod tests {
     fn login_start_rejects_wrong_packet_id() {
         let frame = PacketFrame {
             packet_id: LOGIN_ACKNOWLEDGED_PACKET_ID,
-            payload: Vec::new(),
+            payload: Bytes::new(),
         };
 
         assert_eq!(
@@ -335,7 +336,7 @@ mod tests {
         .concat();
         let frame = PacketFrame {
             packet_id: ENCRYPTION_RESPONSE_PACKET_ID,
-            payload,
+            payload: Bytes::from(payload),
         };
 
         let response = decode_encryption_response(&frame).expect("response should decode");
@@ -447,11 +448,11 @@ mod tests {
     fn login_acknowledged_requires_empty_payload() {
         let valid = PacketFrame {
             packet_id: LOGIN_ACKNOWLEDGED_PACKET_ID,
-            payload: Vec::new(),
+            payload: Bytes::new(),
         };
         let invalid = PacketFrame {
             packet_id: LOGIN_ACKNOWLEDGED_PACKET_ID,
-            payload: vec![0],
+            payload: Bytes::from(vec![0]),
         };
 
         assert_eq!(decode_login_acknowledged(&valid), Ok(()));

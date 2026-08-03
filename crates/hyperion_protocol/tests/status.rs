@@ -32,7 +32,10 @@ fn ping_and_pong_use_big_endian_i64_payloads() {
 
     assert_eq!(ping.payload, -123);
     assert_eq!(pong_frame.packet_id, 1);
-    assert_eq!(pong_frame.payload, (-123_i64).to_be_bytes());
+    assert_eq!(
+        pong_frame.payload.as_ref(),
+        (-123_i64).to_be_bytes().as_slice()
+    );
 }
 
 #[test]

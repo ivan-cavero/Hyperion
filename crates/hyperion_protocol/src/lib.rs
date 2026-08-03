@@ -15,8 +15,8 @@ pub use crypto::{
 };
 pub use error::ProtocolError;
 pub use frame::{
-    MAX_PACKET_LENGTH, PacketFrame, decode_frame, decode_packet_data, decode_var_i32, encode_frame,
-    encode_var_i32, split_frame,
+    FrameSplit, MAX_PACKET_LENGTH, PacketFrame, decode_frame, decode_packet_data, decode_var_i32,
+    encode_frame, encode_var_i32, split_frame,
 };
 pub use handshake::{
     HandshakeIntent, HandshakePacket, MAX_HANDSHAKE_SERVER_ADDRESS_UTF16_UNITS, decode_handshake,

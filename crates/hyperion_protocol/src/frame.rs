@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use uuid::Uuid;
 
 use crate::ProtocolError;
@@ -14,12 +15,27 @@ pub struct PacketFrame {
     /// Packet identifier, interpreted according to the connection state.
     pub packet_id: i32,
     /// Packet data after the packet identifier.
-    pub payload: Vec<u8>,
+    pub payload: Bytes,
+}
+
+/// The result of splitting a frame: byte offsets into the original buffer.
+///
+/// Returned by [`split_frame`] so callers can extract the body without
+/// copying: the body spans `[body_offset..body_offset + body_length)`, and
+/// the total bytes consumed (length prefix + body) is `total_consumed`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameSplit {
+    /// Offset where the frame body (packet ID + payload) begins.
+    pub body_offset: usize,
+    /// Length of the frame body in bytes.
+    pub body_length: usize,
+    /// Total bytes consumed from the input buffer (length prefix + body).
+    pub total_consumed: usize,
 }
 
 /// Separa el prefijo de longitud (VarInt de hasta 3 bytes) del cuerpo de la
 /// trama. Devuelve `Ok(None)` si el buffer aún no contiene la trama completa.
-pub fn split_frame(input: &[u8]) -> Result<Option<(Vec<u8>, usize)>, ProtocolError> {
+pub fn split_frame(input: &[u8]) -> Result<Option<FrameSplit>, ProtocolError> {
     let (packet_length, length_bytes) =
         match decode_var_i32(input, 0, MAX_PACKET_LENGTH_VARINT_BYTES) {
             Ok(pair) => pair,
@@ -36,35 +52,40 @@ pub fn split_frame(input: &[u8]) -> Result<Option<(Vec<u8>, usize)>, ProtocolErr
         return Err(ProtocolError::PacketTooLarge);
     }
 
+    let body_length = packet_length;
     let body_end = length_bytes
-        .checked_add(packet_length)
+        .checked_add(body_length)
         .ok_or(ProtocolError::PacketTooLarge)?;
     if input.len() < body_end {
         return Ok(None);
     }
 
-    Ok(Some((input[length_bytes..body_end].to_vec(), body_end)))
+    Ok(Some(FrameSplit {
+        body_offset: length_bytes,
+        body_length,
+        total_consumed: body_end,
+    }))
 }
 
 /// Decodes a packet (ID + payload) from bytes without a length prefix,
 /// as they appear after decompressing a frame body.
 pub fn decode_packet_data(input: &[u8]) -> Result<PacketFrame, ProtocolError> {
     let (packet_id, packet_id_length) = decode_var_i32(input, 0, MAX_GENERAL_VARINT_BYTES)?;
-    let payload = input
-        .get(packet_id_length..)
-        .ok_or(ProtocolError::InvalidPacketPayload)?
-        .to_vec();
+    let payload = Bytes::copy_from_slice(
+        input
+            .get(packet_id_length..)
+            .ok_or(ProtocolError::InvalidPacketPayload)?,
+    );
 
     Ok(PacketFrame { packet_id, payload })
 }
 
 /// Decodes a complete uncompressed frame.
 pub fn decode_frame(input: &[u8]) -> Result<(PacketFrame, usize), ProtocolError> {
-    let Some((packet_bytes, consumed_bytes)) = split_frame(input)? else {
-        return Err(ProtocolError::UnexpectedEndOfInput);
-    };
+    let split = split_frame(input)?.ok_or(ProtocolError::UnexpectedEndOfInput)?;
+    let packet_bytes = &input[split.body_offset..split.total_consumed];
 
-    Ok((decode_packet_data(&packet_bytes)?, consumed_bytes))
+    Ok((decode_packet_data(packet_bytes)?, split.total_consumed))
 }
 
 /// Encode an uncompressed Minecraft packet frame.

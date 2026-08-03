@@ -8,6 +8,7 @@ repository.workspace = true
 description = "Hyperion protocol: packet codec, NBT, multi-version support"
 
 [dependencies]
+bytes = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

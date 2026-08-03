@@ -235,8 +235,9 @@ impl MockClient {
     pub async fn read_raw_body(&mut self) -> Vec<u8> {
         loop {
             match split_frame(&self.read_buffer[..]).expect("frame should split") {
-                Some((body, consumed_bytes)) => {
-                    self.read_buffer.advance(consumed_bytes);
+                Some(split) => {
+                    let body = self.read_buffer[split.body_offset..split.total_consumed].to_vec();
+                    self.read_buffer.advance(split.total_consumed);
                     return body;
                 }
                 None => {

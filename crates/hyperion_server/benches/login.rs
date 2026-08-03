@@ -79,10 +79,11 @@ async fn write_packet(
 /// Reads one complete wire frame from the socket, buffering across reads.
 async fn read_raw_frame(stream: &mut TcpStream, buffer: &mut BytesMut) -> io::Result<Vec<u8>> {
     loop {
-        if let Some((body, consumed)) = split_frame(buffer)
+        if let Some(split) = split_frame(buffer)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?
         {
-            buffer.advance(consumed);
+            let body = buffer[split.body_offset..split.total_consumed].to_vec();
+            buffer.advance(split.total_consumed);
             return Ok(body);
         }
         let mut chunk = [0u8; 4096];
@@ -105,7 +106,7 @@ async fn read_packet(
     compression_threshold: Option<usize>,
 ) -> io::Result<PacketFrame> {
     let raw_body = read_raw_frame(stream, buffer).await?;
-    let packet_body = match compression_threshold {
+    let packet_body: Vec<u8> = match compression_threshold {
         Some(_) => decompress_body(&raw_body)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?,
         None => raw_body,

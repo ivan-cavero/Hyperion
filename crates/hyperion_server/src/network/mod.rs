@@ -93,7 +93,9 @@ pub async fn handle_connection(
 
     match handshake.intent {
         HandshakeIntent::Status => serve_status(&mut connection).await,
-        HandshakeIntent::Login => serve_login(&mut connection, &config, peer_address, key_pool).await,
+        HandshakeIntent::Login => {
+            serve_login(&mut connection, &config, peer_address, key_pool).await
+        }
         // Transfer arrives in a later milestone.
         HandshakeIntent::Transfer => {
             warn!(%peer_address, "transfer intent is not implemented yet");

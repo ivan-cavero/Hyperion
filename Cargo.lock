@@ -481,6 +481,7 @@ name = "hyperion_protocol"
 version = "0.1.0"
 dependencies = [
  "aes",
+ "bytes",
  "divan",
  "flate2",
  "md5",

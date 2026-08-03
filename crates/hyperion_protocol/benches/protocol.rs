@@ -69,10 +69,11 @@ fn split_frame_tiny(bencher: divan::Bencher) {
 fn read_direct(bencher: divan::Bencher) {
     let frame = encode_frame(0, MEDIUM_BODY).expect("frame");
     bencher.bench(|| {
-        let (body, _consumed) = split_frame(black_box(&frame))
+        let split = split_frame(black_box(&frame))
             .expect("frame should split")
             .expect("frame complete");
-        black_box(decode_packet_data(&body).expect("packet should decode"))
+        let body = &frame[split.body_offset..split.total_consumed];
+        black_box(decode_packet_data(body).expect("packet should decode"))
     });
 }
 
@@ -87,10 +88,11 @@ fn read_compressed(bencher: divan::Bencher) {
     frame.extend_from_slice(&frame_body);
 
     bencher.bench(|| {
-        let (bytes, _consumed) = split_frame(black_box(&frame))
+        let split = split_frame(black_box(&frame))
             .expect("frame should split")
             .expect("frame complete");
-        let packet = decompress_body(&bytes).expect("should inflate");
+        let bytes = &frame[split.body_offset..split.total_consumed];
+        let packet = decompress_body(bytes).expect("should inflate");
         black_box(decode_packet_data(&packet).expect("packet should decode"))
     });
 }
