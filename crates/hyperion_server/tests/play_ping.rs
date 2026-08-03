@@ -7,7 +7,7 @@ mod common;
 use hyperion_protocol::{PING_PACKET_ID, PING_REQUEST_PACKET_ID};
 use tokio::net::TcpListener;
 
-use common::{MockClient, log_into_play};
+use common::log_into_play;
 use hyperion_server::config::ServerConfig;
 use hyperion_server::key_pool::KeyPool;
 use hyperion_server::network::{ConnectionError, handle_connection};

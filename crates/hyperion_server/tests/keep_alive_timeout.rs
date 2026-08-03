@@ -10,7 +10,6 @@ use common::log_into_play;
 use hyperion_server::config::ServerConfig;
 use hyperion_server::key_pool::KeyPool;
 use hyperion_server::network::handle_connection;
-
 #[tokio::test]
 async fn silent_client_is_kicked_after_keep_alive_timeout() {
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -67,7 +66,7 @@ async fn silent_client_is_kicked_after_keep_alive_timeout() {
     assert_eq!(reason, "Timed out");
 
     // The kick ends the session cleanly (no error to report).
-    let _result = server_task
+    server_task
         .await
         .expect("server task should finish")
         .expect("a keep-alive kick must close the session cleanly");
