@@ -19,16 +19,17 @@ use hyperion_protocol::{
     SERVERBOUND_KEEP_ALIVE_PACKET_ID, SET_CHUNK_CACHE_CENTER_PACKET_ID,
     SET_CHUNK_CACHE_RADIUS_PACKET_ID, SET_DEFAULT_SPAWN_POSITION_PACKET_ID,
     SET_SIMULATION_DISTANCE_PACKET_ID, SET_TICKING_STATE_PACKET_ID, SYSTEM_CHAT_MESSAGE_PACKET_ID,
-    ServerData, TimeClock, UPDATE_TIME_PACKET_ID, decode_chat_message, decode_chunk_batch_received,
-    decode_client_information, decode_client_tick_end, decode_confirm_teleportation,
-    decode_keep_alive, decode_player_loaded, encode_chunk_batch_finished_payload,
+    ServerData, TimeClock, UPDATE_TIME_PACKET_ID, PING_PACKET_ID, PING_REQUEST_PACKET_ID,
+    decode_chat_message, decode_chunk_batch_received, decode_client_information,
+    decode_client_tick_end, decode_confirm_teleportation, decode_keep_alive,
+    decode_play_ping_request, decode_player_loaded, encode_chunk_batch_finished_payload,
     encode_chunk_batch_start_payload, encode_empty_chunk_payload, encode_game_event_payload,
-    encode_keep_alive_payload, encode_login_payload, encode_player_abilities_payload,
-    encode_player_info_update_payload, encode_player_position_payload, encode_server_data_payload,
-    encode_set_chunk_cache_center_payload, encode_set_chunk_cache_radius_payload,
-    encode_set_default_spawn_position_payload, encode_set_simulation_distance_payload,
-    encode_set_ticking_state_payload, encode_system_chat_message_payload,
-    encode_update_time_payload,
+    encode_keep_alive_payload, encode_login_payload, encode_ping_payload,
+    encode_player_abilities_payload, encode_player_info_update_payload,
+    encode_player_position_payload, encode_server_data_payload, encode_set_chunk_cache_center_payload,
+    encode_set_chunk_cache_radius_payload, encode_set_default_spawn_position_payload,
+    encode_set_simulation_distance_payload, encode_set_ticking_state_payload,
+    encode_system_chat_message_payload, encode_update_time_payload,
 };
 use tokio::time::{Instant, interval_at};
 use tracing::{info, trace, warn};
@@ -43,6 +44,13 @@ const KEEP_ALIVE_INTERVAL_SECONDS: u64 = 10;
 const GAME_EVENT_START_WAITING_FOR_LEVEL_CHUNKS: u8 = 13;
 /// Creative game mode: flying in the void without fall damage.
 const GAME_MODE_CREATIVE: u8 = 1;
+/// Highest valid serverbound Play packet ID.
+///
+/// The 26.2 packets.json dump lists exactly 69 serverbound Play packets with
+/// contiguous IDs 0..=68. Everything in that range is a legitimate vanilla
+/// packet we may not implement yet; anything above it is a protocol desync
+/// or a broken/malicious client and is worth a warning.
+const MAX_SERVERBOUND_PLAY_PACKET_ID: i32 = 68;
 
 /// Sends the spawn sequence and runs the keep-alive/chat loop.
 pub(super) async fn serve_play(
@@ -230,6 +238,14 @@ pub(super) async fn serve_play(
                         let id = decode_keep_alive(&frame.payload)?;
                         trace!(%username, id, "keep-alive response");
                     }
+                    PING_REQUEST_PACKET_ID => {
+                        // Vanilla answers the latency probe immediately.
+                        let id = decode_play_ping_request(&frame.payload)?;
+                        connection
+                            .write_frame(PING_PACKET_ID, &encode_ping_payload(id))
+                            .await?;
+                        trace!(%username, id, "ping answered");
+                    }
                     CHAT_MESSAGE_PACKET_ID => {
                         let chat = decode_chat_message(&frame.payload)?;
                         info!(%username, message = %chat.message, "chat message");
@@ -264,7 +280,14 @@ pub(super) async fn serve_play(
                     | CHAT_SESSION_UPDATE_PACKET_ID => {
                         // Movement and chat sessions are ignored for now.
                     }
-                    other => warn!(%username, packet_id = other, "unhandled play packet"),
+                    other @ 0..=MAX_SERVERBOUND_PLAY_PACKET_ID => {
+                        // A legitimate vanilla packet we do not implement yet
+                        // (inventory, abilities, entity actions, ...): the
+                        // client sends these routinely, so keep quiet about
+                        // them.
+                        trace!(%username, packet_id = other, "ignoring unimplemented play packet");
+                    }
+                    other => warn!(%username, packet_id = other, "unhandled play packet out of range"),
                 }
             }
             _ = keep_alive.tick() => {

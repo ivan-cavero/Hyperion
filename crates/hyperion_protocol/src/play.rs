@@ -25,6 +25,8 @@ pub const DISCONNECT_PACKET_ID: i32 = 32;
 pub const GAME_EVENT_PACKET_ID: i32 = 38;
 /// ID of the clientbound `keep_alive` packet (Play state).
 pub const KEEP_ALIVE_PACKET_ID: i32 = 44;
+/// ID of the clientbound `ping` packet (Play state).
+pub const PING_PACKET_ID: i32 = 61;
 /// ID of the clientbound `level_chunk_with_light` packet.
 pub const LEVEL_CHUNK_WITH_LIGHT_PACKET_ID: i32 = 45;
 /// ID of the clientbound `login` packet (Play state).
@@ -68,6 +70,8 @@ pub const CLIENT_TICK_END_PACKET_ID: i32 = 13;
 pub const CLIENT_INFORMATION_PACKET_ID: i32 = 14;
 /// ID of the serverbound `keep_alive` packet (Play state).
 pub const SERVERBOUND_KEEP_ALIVE_PACKET_ID: i32 = 28;
+/// ID of the serverbound `ping_request` packet.
+pub const PING_REQUEST_PACKET_ID: i32 = 38;
 /// ID of the serverbound `move_player_pos` packet.
 pub const MOVE_PLAYER_POS_PACKET_ID: i32 = 30;
 /// ID of the serverbound `move_player_pos_rot` packet.
@@ -254,6 +258,16 @@ pub fn encode_player_info_update_payload(
 
 /// Encodes the payload of the clientbound `keep_alive` packet (ID 44).
 pub fn encode_keep_alive_payload(id: i64) -> Vec<u8> {
+    let mut writer = ByteWriter::with_capacity(8);
+    writer.push_i64(id);
+    writer.into_bytes()
+}
+
+/// Encodes the payload of the clientbound `ping` packet (ID 61).
+///
+/// The payload echoes the value of the serverbound `ping_request` packet,
+/// exactly like `keep_alive`.
+pub fn encode_ping_payload(id: i64) -> Vec<u8> {
     let mut writer = ByteWriter::with_capacity(8);
     writer.push_i64(id);
     writer.into_bytes()
@@ -544,6 +558,13 @@ pub fn decode_keep_alive(payload: &[u8]) -> Result<i64, ProtocolError> {
     cursor.read_i64()
 }
 
+/// Decodes the payload of the serverbound Play `ping_request` packet (ID 38),
+/// returning the payload to echo back in the clientbound `ping` packet.
+pub fn decode_ping_request(payload: &[u8]) -> Result<i64, ProtocolError> {
+    let mut cursor = PacketCursor::new(payload);
+    cursor.read_i64()
+}
+
 /// Decodes the payload of the serverbound `chat` packet (ID 9).
 pub fn decode_chat_message(payload: &[u8]) -> Result<ChatMessage, ProtocolError> {
     let mut cursor = PacketCursor::new(payload);
@@ -651,6 +672,17 @@ mod tests {
         assert_eq!(
             decode_keep_alive(&frame.payload).expect("decodes"),
             0x1122_3344_5566_7788
+        );
+    }
+
+    #[test]
+    fn ping_request_echo_round_trip() {
+        let payload = encode_ping_payload(0x0102_0304_0506_0708);
+        let frame = round_trip_frame(PING_PACKET_ID, &payload);
+        assert_eq!(frame.packet_id, PING_PACKET_ID);
+        assert_eq!(
+            decode_ping_request(&frame.payload).expect("decodes"),
+            0x0102_0304_0506_0708
         );
     }
 
