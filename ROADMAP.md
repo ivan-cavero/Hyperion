@@ -26,7 +26,7 @@ Prepare the ground: decisions, toolchain, CI, workspace skeleton.
 - [x] Pinned stable Rust toolchain (`rust-toolchain.toml`) + `rustfmt.toml` + `.editorconfig` + `.gitattributes` (LF)
 - [x] Full CI: `cargo build` · `cargo test` · `cargo clippy -D warnings` · `cargo fmt --check` + **cargo-audit** (security) + **cargo-deny** (licenses) + dependabot — fuzz is added in Phase 1
 - [ ] Worldgen decision: own core vs. cubiomes reference (MIT) vs. inherit from Pumpkin (GPL) — **ADR 0001 open, Phase 2 deadline**
-- [ ] Data extraction setup (see Phase 2) — choose source: Mojang data generators + jar extractor
+- [x] Data extraction setup (see Phase 2) — chosen and implemented: Mojang data generators + jar extractor (`tools/mc-ref`, ready; generates 26.2 reports + embedded join data)
 - [x] README + ROADMAP + CONTRIBUTING + docs (ARCHITECTURE, DEPENDENCIES, ADR 0001–0005) published
 - [x] First foundation commit created
 
@@ -34,7 +34,7 @@ Prepare the ground: decisions, toolchain, CI, workspace skeleton.
 
 ---
 
-## PHASE 1 — Network and protocol (month 1–4) · ⬜
+## PHASE 1 — Network and protocol (month 1–4) · 🔄
 
 The heart of the project: speak the Minecraft protocol securely.
 
@@ -42,14 +42,14 @@ The heart of the project: speak the Minecraft protocol securely.
 - [x] **Live TCP server + status**: tokio listener on 25565, Handshake→Status state machine; a vanilla 26.x client sees the server list and ping responds
 - [x] **Full login**: RSA-1024 handshake, AES/CFB8, zlib compression — offline AND online-mode (Mojang auth) working with tests
 - [x] **Configuration**: correct vanilla flow (Feature Flags → Known Packs → Registry Data without NBT via `minecraft:core` → Update Tags → Code of Conduct → Finish) with listings generated from the 26.2 jar
-- [🔄] **Play**: basic packets (login (play), keep-alive, chat with echo, position, spawn with empty chunk with light) — join to empty world on protocol 776 / 26.2
+- [x] **Play**: basic packets (login (play), keep-alive with timeout kick, chat with echo, ping answer, position, spawn with empty chunk with light) — join to empty world on protocol 776 / 26.2, E2E-tested offline/online through spawn and verified with a real vanilla client
 - [ ] **Generated packet codec** by codegen from extracted JSON (registries + protocol)
 - [🔄] **Own NBT** (network-NBT writing done and verified against real captures; reader and streaming pending)
-- [x] **Fuzzing**: `cargo-fuzz` frame/handshake/status/login in CI — config/play added with the Play state
+- [🔄] **Fuzzing**: `cargo-fuzz` frame/handshake/status/login in CI — config/play targets pending
 - [x] **Unit tests** for frame/handshake/status/login/config/play codecs + E2E offline/online through spawn
 - [ ] `tools/packet_inspector` tool to debug real traffic against a vanilla client
 
-**Exit criterion**: a vanilla 26.x client joins the server, sees the empty world, chats and moves, with fuzzing green in CI.
+**Exit criterion**: a vanilla 26.x client joins the server, sees the empty world, chats and moves, with fuzzing green in CI. ✅ (join/chat/moves verified E2E and with a real client; fuzz smoke green for the existing targets)
 
 ---
 
@@ -57,7 +57,7 @@ The heart of the project: speak the Minecraft protocol securely.
 
 The "same seed, same world" promise is delivered here.
 
-- [ ] **Data extraction pipeline**: Fabric mod or Mojang data generators → versioned JSON (registries, biomes, items, protocol)
+- [ ] **Data extraction pipeline**: Fabric mod or Mojang data generators → versioned JSON (registries, biomes, items, protocol) — *partial: `tools/mc-ref` already generates 26.2 reports + join data; the generic versioned pipeline is pending*
 - [ ] **Codegen**: `build.rs` generates Rust from the JSON (structs, coders, registries)
 - [ ] **Chunks**: Anvil format (read/write, compat with existing worlds)
 - [ ] **Worldgen**: noise (simplex/octaves), biomes, surface, caves, ores, trees — goal block-by-block parity
