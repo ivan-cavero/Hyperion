@@ -70,9 +70,14 @@ pub fn decompress_body(input: &[u8]) -> Result<Vec<u8>, ProtocolError> {
         ));
     }
 
-    let mut decoder = ZlibDecoder::new(data);
+    let decoder = ZlibDecoder::new(data);
+    // Bound the read: a malicious peer may declare a small length but send a
+    // stream that inflates far beyond it (zip bomb). Reading at most
+    // `uncompressed_length + 1` bytes caps the allocation, and the
+    // size-mismatch check below rejects the packet.
     let mut output = Vec::with_capacity(uncompressed_length);
     decoder
+        .take(uncompressed_length as u64 + 1)
         .read_to_end(&mut output)
         .map_err(|error| ProtocolError::Compression(error.to_string()))?;
 
@@ -136,5 +141,34 @@ mod tests {
     fn oversized_declared_length_is_rejected() {
         let encoded = encode_var_i32(MAX_UNCOMPRESSED_LENGTH as i32 + 1);
         assert!(decompress_body(&encoded).is_err());
+    }
+
+    #[test]
+    fn zip_bomb_is_rejected() {
+        // A stream that inflates far beyond its declared length (10 KB of
+        // zeros compressed to a few hundred bytes, declared as 100) must
+        // fail. The bounded read caps the allocation at declared + 1 bytes.
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(&[0u8; 10_000])
+            .expect("encoder should write");
+        let zlib = encoder.finish().expect("encoder should finish");
+
+        let mut bomb = encode_var_i32(100); // declared: 100 bytes
+        bomb.extend_from_slice(&zlib);
+        assert!(decompress_body(&bomb).is_err());
+    }
+
+    #[test]
+    fn declared_length_larger_than_actual_is_rejected() {
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(&[1u8; 1_000])
+            .expect("encoder should write");
+        let zlib = encoder.finish().expect("encoder should finish");
+
+        let mut body = encode_var_i32(20_000); // declared: 20_000 bytes
+        body.extend_from_slice(&zlib);
+        assert!(decompress_body(&body).is_err());
     }
 }
