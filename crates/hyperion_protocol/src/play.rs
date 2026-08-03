@@ -708,13 +708,19 @@ mod tests {
     fn decoders_reject_payloads_with_trailing_bytes() {
         // A strict decoder must refuse any payload that does not match the
         // packet's exact field layout, like vanilla does.
-        let keep_alive = encode_keep_alive_payload(7).into_iter().chain([0xff]).collect::<Vec<_>>();
+        let keep_alive = encode_keep_alive_payload(7)
+            .into_iter()
+            .chain([0xff])
+            .collect::<Vec<_>>();
         assert!(matches!(
             decode_keep_alive(&keep_alive),
             Err(ProtocolError::InvalidPacketPayload)
         ));
 
-        let ping = encode_ping_payload(7).into_iter().chain([0xff]).collect::<Vec<_>>();
+        let ping = encode_ping_payload(7)
+            .into_iter()
+            .chain([0xff])
+            .collect::<Vec<_>>();
         assert!(matches!(
             decode_ping_request(&ping),
             Err(ProtocolError::InvalidPacketPayload)

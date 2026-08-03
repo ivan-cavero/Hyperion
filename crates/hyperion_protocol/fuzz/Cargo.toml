@@ -42,3 +42,17 @@ path = "fuzz_targets/login.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "configuration"
+path = "fuzz_targets/configuration.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "play"
+path = "fuzz_targets/play.rs"
+test = false
+doc = false
+bench = false

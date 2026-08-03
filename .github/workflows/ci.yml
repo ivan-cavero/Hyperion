@@ -87,7 +87,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        fuzz_target: [frame, handshake, status, login]
+        fuzz_target: [frame, handshake, status, login, configuration, play]
     env:
       CARGO_FUZZ_VERSION: 0.12.0
       FUZZ_TIME: 30
