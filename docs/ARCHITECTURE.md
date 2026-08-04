@@ -23,10 +23,10 @@
 - Multi-version: block-state remapping layer between supported versions (short range in v1: 1.21 → 26.x, Pumpkin model).
 
 ### 3. World (hyperion_world)
-- **Bootstrap (partial, Phase 2)**: first-start data dir — vanilla `level-name` / `level-seed` → `<level-name>/level.dat` (gzip storage NBT), `session.lock`, list JSON stubs.
-- **Chunks**: Anvil format (compat with vanilla worlds, read/write) + **HCF** (Hyperion Chunk Format) for ultra-fast multi-threaded I/O.
+- **Bootstrap (Phase 2)**: first-start data dir — vanilla `level-name` / `level-seed` → `<level-name>/level.dat` (gzip storage NBT), `session.lock`, list JSON stubs, spawn chunk in Anvil.
+- **Chunks (Phase 2.1)**: Anvil region I/O + column model with **single-valued** sections (storage NBT ↔ network `level_chunk_with_light`). Flat stone platform at spawn until worldgen. Multi-palette sections and **HCF** later.
 - **1:1 worldgen**: noise + biomes + surface + features + structures. Reference: cubiomes (MIT) for biomes/structures; own terrain core. Verification by diff against vanilla (same seed).
-- **Light**: sky/block light, parallel calculation.
+- **Light**: full-bright sky mask for now; multi-threaded sky/block light later.
 
 ### 4. Simulation (hyperion_simulation)
 - **Region ticking**: world partitioned into regions of ~N×N chunks; each region has its own tick loop at 20 TPS.

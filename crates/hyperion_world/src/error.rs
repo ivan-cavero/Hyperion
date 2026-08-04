@@ -31,6 +31,9 @@ pub enum WorldError {
     /// Anvil region file is corrupt or a chunk payload is out of bounds.
     #[error("invalid region: {0}")]
     InvalidRegion(String),
+    /// Chunk storage NBT is missing fields or has the wrong structure.
+    #[error("invalid chunk: {0}")]
+    InvalidChunk(String),
 }
 
 impl WorldError {

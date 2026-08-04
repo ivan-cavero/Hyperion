@@ -121,7 +121,7 @@ reads from that config — nothing operators can tune is hard-coded in the netwo
 | `simulation-distance` | `8` | Server-side simulation distance |
 | `network-compression-threshold` | `256` | Zlib threshold (`-1` disables) |
 | `session-server-url` | Mojang | Override for proxies / tests |
-| `spawn-y` | `100` | Temporary `SpawnY` until worldgen |
+| `spawn-y` | `64` | Feet Y on the flat spawn platform (ground = 63) |
 | `keep-alive-interval` / `keep-alive-timeout` | `10` / `30` | Seconds |
 
 CLI flags (`--online-mode`, `--offline-mode`, positional `host:port`) override the file after load.

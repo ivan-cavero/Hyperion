@@ -63,15 +63,24 @@ The "same seed, same world" promise is delivered here.
 - [x] **Minimal `level.dat` (gzip storage NBT)**: write/read named-root compound with `Data.LevelName`, `SpawnX/Y/Z`, `DataVersion`, legacy `RandomSeed`, and `WorldGenSettings.seed` — *minimal subset only; not full vanilla level.dat*
 - [x] **Storage NBT API**: `encode_named_tag` / `decode_named_tag` in `hyperion_protocol` (distinct from network NBT) + gzip helpers in `hyperion_world`
 
+### Phase 2.1 — chunk schema + serve from Anvil · ✅
+
+- [x] **Chunk column model**: single-valued sections (block + biome), storage NBT encode/decode
+- [x] **Flat spawn chunk**: bedrock floor + stone up to section-aligned ground, air above; written to `region/r.0.0.mca` on bootstrap
+- [x] **Play serves Anvil**: `level_chunk_with_light` built from the loaded column (void fallback when `world_dir` empty for tests)
+- [x] **Network heightmaps**: packed 9-bit surface values for WORLD_SURFACE + MOTION_BLOCKING
+- [x] **Provisional block-state ids**: air/stone/bedrock constants (replace with codegen later)
+
 ### Remaining Phase 2 work
 
 - [ ] **Data extraction pipeline**: Fabric mod or Mojang data generators → versioned JSON (registries, biomes, items, protocol) — *partial: `tools/mc-ref` already generates 26.2 reports + join data; the generic versioned pipeline is pending*
-- [ ] **Codegen**: `build.rs` generates Rust from the JSON (structs, coders, registries)
-- [🔄] **Chunks**: Anvil **region** I/O (`.mca` read/write, zlib/gzip, size caps) done; full chunk NBT schema + serving in Play still pending
+- [ ] **Codegen**: `build.rs` generates Rust from the JSON (structs, coders, registries) — includes full block-state id map
+- [x] **Chunks (region I/O)**: Anvil **region** I/O (`.mca` read/write, zlib/gzip, size caps)
+- [x] **Chunks (schema + Play)**: single-valued section NBT + flat platform served in Play — *multi-palette sections still pending*
 - [ ] **Worldgen**: noise (simplex/octaves), biomes, surface, caves, ores, trees — goal block-by-block parity
 - [ ] **Structures**: stronghold, villages, bastions… (WIP phase — declare honest parity level)
 - [ ] **Own format** "Hyperion chunk format" (HCF) for ultra-fast multi-threaded load/save
-- [ ] **Light**: multi-threaded light calculation (sky/block)
+- [ ] **Light**: multi-threaded light calculation (sky/block) — *full-bright sky mask only for now*
 - [ ] **Differential testing**: compare generated chunks against vanilla (same seed) in CI
 - [ ] Decision: inherited vs own worldgen (close the open Phase 0 item)
 

@@ -131,6 +131,9 @@ async fn main() -> ExitCode {
         "data directory ready"
     );
 
+    // Play loads Anvil chunks from this directory (spawn chunk created above).
+    config.world_dir = data_paths.world_dir.clone();
+
     info!(
         config_path = %config_path.display(),
         bind_address = %config.bind_address(),
@@ -139,6 +142,7 @@ async fn main() -> ExitCode {
         motd = %config.motd,
         level_name = %config.level_name,
         level_seed = config.level_seed,
+        world_dir = %config.world_dir.display(),
         view_distance = config.view_distance,
         simulation_distance = config.simulation_distance,
         compression_threshold = config.compression_threshold,

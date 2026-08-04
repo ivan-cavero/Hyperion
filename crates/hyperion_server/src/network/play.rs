@@ -2,37 +2,40 @@
 //!
 //! After Configuration the server switches to Play and sends the spawn
 //! sequence: Login (play), abilities, player info, world settings, the
-//! single spawn chunk (void world) and a teleport. Then a keep-alive/chat
-//! loop runs until the client disconnects.
+//! spawn chunk (Anvil flat platform when `world_dir` is set) and a teleport.
+//! Then a keep-alive/chat loop runs until the client disconnects.
 
 use std::time::Duration;
 
 use hyperion_protocol::{
-    CHAT_MESSAGE_PACKET_ID, CHAT_SESSION_UPDATE_PACKET_ID, CHUNK_BATCH_FINISHED_PACKET_ID,
-    CHUNK_BATCH_RECEIVED_PACKET_ID, CHUNK_BATCH_START_PACKET_ID, CLIENT_INFORMATION_PACKET_ID,
-    CLIENT_TICK_END_PACKET_ID, CONFIRM_TELEPORTATION_PACKET_ID, DISCONNECT_PACKET_ID,
-    GAME_EVENT_PACKET_ID, GameProfile, KEEP_ALIVE_PACKET_ID, LEVEL_CHUNK_WITH_LIGHT_PACKET_ID,
-    LOGIN_PACKET_ID, LoginPlay, MAX_VIEW_DISTANCE, MIN_VIEW_DISTANCE, MOVE_PLAYER_POS_PACKET_ID,
-    MOVE_PLAYER_POS_ROT_PACKET_ID, MOVE_PLAYER_ROT_PACKET_ID, PING_PACKET_ID,
-    PING_REQUEST_PACKET_ID, PLAYER_ABILITIES_PACKET_ID, PLAYER_COMMAND_PACKET_ID,
-    PLAYER_INFO_UPDATE_PACKET_ID, PLAYER_INPUT_PACKET_ID, PLAYER_LOADED_PACKET_ID,
-    PLAYER_POSITION_PACKET_ID, PlayerAbilities, PlayerInfoUpdate, SERVER_DATA_PACKET_ID,
-    SERVERBOUND_KEEP_ALIVE_PACKET_ID, SET_CHUNK_CACHE_CENTER_PACKET_ID,
+    ABILITIES_CREATIVE, CHAT_MESSAGE_PACKET_ID, CHAT_SESSION_UPDATE_PACKET_ID,
+    CHUNK_BATCH_FINISHED_PACKET_ID, CHUNK_BATCH_RECEIVED_PACKET_ID, CHUNK_BATCH_START_PACKET_ID,
+    CLIENT_INFORMATION_PACKET_ID, CLIENT_TICK_END_PACKET_ID, CONFIRM_TELEPORTATION_PACKET_ID,
+    CUSTOM_PAYLOAD_PLAY_PACKET_ID, DISCONNECT_PACKET_ID, GAME_EVENT_CHANGE_GAME_MODE,
+    GAME_EVENT_PACKET_ID, GAME_EVENT_START_WAITING_FOR_LEVEL_CHUNKS, GameProfile,
+    KEEP_ALIVE_PACKET_ID, LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, LOGIN_PACKET_ID, LoginPlay,
+    MAX_VIEW_DISTANCE, MIN_VIEW_DISTANCE, MOVE_PLAYER_POS_PACKET_ID, MOVE_PLAYER_POS_ROT_PACKET_ID,
+    MOVE_PLAYER_ROT_PACKET_ID, PING_PACKET_ID, PING_REQUEST_PACKET_ID, PLAYER_ABILITIES_PACKET_ID,
+    PLAYER_COMMAND_PACKET_ID, PLAYER_INFO_UPDATE_PACKET_ID, PLAYER_INPUT_PACKET_ID,
+    PLAYER_LOADED_PACKET_ID, PLAYER_POSITION_PACKET_ID, PlayerAbilities, PlayerInfoUpdate,
+    SERVER_DATA_PACKET_ID, SERVERBOUND_KEEP_ALIVE_PACKET_ID, SET_CHUNK_CACHE_CENTER_PACKET_ID,
     SET_CHUNK_CACHE_RADIUS_PACKET_ID, SET_DEFAULT_SPAWN_POSITION_PACKET_ID,
-    SET_SIMULATION_DISTANCE_PACKET_ID, SET_TICKING_STATE_PACKET_ID, SYSTEM_CHAT_MESSAGE_PACKET_ID,
-    ServerData, TimeClock, UPDATE_TIME_PACKET_ID, decode_chat_message, decode_chunk_batch_received,
-    decode_client_information, decode_client_tick_end, decode_confirm_teleportation,
-    decode_keep_alive, decode_play_ping_request, decode_player_loaded,
+    SET_HELD_ITEM_PACKET_ID, SET_SIMULATION_DISTANCE_PACKET_ID, SET_TICKING_STATE_PACKET_ID,
+    SYSTEM_CHAT_MESSAGE_PACKET_ID, ServerData, TimeClock, UPDATE_TIME_PACKET_ID,
+    decode_chat_message, decode_chunk_batch_received, decode_client_information,
+    decode_client_tick_end, decode_confirm_teleportation, decode_keep_alive,
+    decode_play_ping_request, decode_player_loaded, encode_brand_payload,
     encode_chunk_batch_finished_payload, encode_chunk_batch_start_payload,
     encode_disconnect_payload, encode_empty_chunk_payload, encode_game_event_payload,
     encode_keep_alive_payload, encode_login_payload, encode_ping_payload,
     encode_player_abilities_payload, encode_player_info_update_payload,
     encode_player_position_payload, encode_server_data_payload,
     encode_set_chunk_cache_center_payload, encode_set_chunk_cache_radius_payload,
-    encode_set_default_spawn_position_payload, encode_set_simulation_distance_payload,
-    encode_set_ticking_state_payload, encode_system_chat_message_payload,
-    encode_update_time_payload,
+    encode_set_default_spawn_position_payload, encode_set_held_item_payload,
+    encode_set_simulation_distance_payload, encode_set_ticking_state_payload,
+    encode_system_chat_message_payload, encode_update_time_payload,
 };
+use hyperion_world::{ChunkColumn, load_or_flat, snap_ground_y};
 use tokio::time::{Instant, interval_at};
 use tracing::{info, trace, warn};
 
@@ -40,10 +43,10 @@ use super::configuration::{OVERWORLD_DIMENSION_TYPE_ID, PLAINS_BIOME_ID, SECTION
 use super::connection::{Connection, ConnectionError};
 use crate::config::ServerConfig;
 
-/// Game event "Start waiting for level chunks" (see Game Event, Play ID 38).
-const GAME_EVENT_START_WAITING_FOR_LEVEL_CHUNKS: u8 = 13;
-/// Creative game mode: flying in the void without fall damage.
+/// Creative game mode id (0 survival, 1 creative, 2 adventure, 3 spectator).
 const GAME_MODE_CREATIVE: u8 = 1;
+/// Brand string shown in F3 "Server brand" / debug.
+const SERVER_BRAND: &str = "Hyperion";
 /// Highest valid serverbound Play packet ID.
 ///
 /// The 26.2 packets.json dump lists exactly 69 serverbound Play packets with
@@ -67,7 +70,7 @@ pub(super) async fn serve_play(
     let simulation_distance = config
         .simulation_distance
         .clamp(MIN_VIEW_DISTANCE, MAX_VIEW_DISTANCE);
-    let spawn_y = config.spawn_y as f64 + 0.5;
+    let spawn_y = config.spawn_y as f64;
 
     // 1. Login (play): the client leaves the loading screen once it arrives.
     // Entity id 0 is reserved ("not assigned yet") on the client and throws
@@ -86,7 +89,7 @@ pub(super) async fn serve_play(
         game_mode: GAME_MODE_CREATIVE,
         previous_game_mode: -1,
         is_debug: false,
-        is_flat: false,
+        is_flat: !config.world_dir.as_os_str().is_empty(),
         portal_cooldown: 0,
         sea_level: 63,
         online_mode: config.online_mode,
@@ -96,9 +99,18 @@ pub(super) async fn serve_play(
         .write_frame(LOGIN_PACKET_ID, &encode_login_payload(&login)?)
         .await?;
 
-    // 2. Player abilities: flying enabled.
+    // 2. Brand (F3 "Server brand") — without this the client shows null.
+    connection
+        .write_frame(
+            CUSTOM_PAYLOAD_PLAY_PACKET_ID,
+            &encode_brand_payload(SERVER_BRAND)?,
+        )
+        .await?;
+
+    // 3. Full creative abilities (invulnerable + fly + creative instant-break).
+    // Missing 0x08 made the client open a survival inventory and mine slowly.
     let abilities = PlayerAbilities {
-        flags: 0x02 | 0x04, // flying + allow flying
+        flags: ABILITIES_CREATIVE,
         fly_speed: 0.05,
         fov_modifier: 0.1,
     };
@@ -109,11 +121,19 @@ pub(super) async fn serve_play(
         )
         .await?;
 
-    // 3. Player info update: the player itself.
+    // 4. Explicit game-mode change (belt-and-suspenders with Login game_mode).
+    connection
+        .write_frame(
+            GAME_EVENT_PACKET_ID,
+            &encode_game_event_payload(GAME_EVENT_CHANGE_GAME_MODE, f32::from(GAME_MODE_CREATIVE)),
+        )
+        .await?;
+
+    // 5. Player info update: the player itself (tab list + local game mode).
     let info = [PlayerInfoUpdate {
         uuid: *profile.uuid.as_bytes(),
         name: username.clone(),
-        game_mode: GAME_MODE_CREATIVE as i32,
+        game_mode: i32::from(GAME_MODE_CREATIVE),
         listed: true,
         ping: 0,
     }];
@@ -124,7 +144,12 @@ pub(super) async fn serve_play(
         )
         .await?;
 
-    // 4. Server data (tab-list MOTD) — same text as the multiplayer list.
+    // 6. Held item slot (hotbar 0).
+    connection
+        .write_frame(SET_HELD_ITEM_PACKET_ID, &encode_set_held_item_payload(0))
+        .await?;
+
+    // 7. Server data (tab-list MOTD) — same text as the multiplayer list.
     let server_data = ServerData {
         motd: config.motd.clone(),
         icon: None,
@@ -136,7 +161,7 @@ pub(super) async fn serve_play(
         )
         .await?;
 
-    // 5. World settings: chunk cache center, radius and simulation distance.
+    // 8. World settings: chunk cache center, radius and simulation distance.
     connection
         .write_frame(
             SET_CHUNK_CACHE_CENTER_PACKET_ID,
@@ -156,7 +181,7 @@ pub(super) async fn serve_play(
         )
         .await?;
 
-    // 6. Default spawn position.
+    // 9. Default spawn position.
     connection
         .write_frame(
             SET_DEFAULT_SPAWN_POSITION_PACKET_ID,
@@ -171,7 +196,7 @@ pub(super) async fn serve_play(
         )
         .await?;
 
-    // 7. "Start waiting for level chunks" (vanilla sends this before chunks).
+    // 10. "Start waiting for level chunks" (vanilla sends this before chunks).
     connection
         .write_frame(
             GAME_EVENT_PACKET_ID,
@@ -179,7 +204,7 @@ pub(super) async fn serve_play(
         )
         .await?;
 
-    // 8. Time and ticking state.
+    // 11. Time and ticking state.
     let clocks = [TimeClock {
         clock_id: 0,
         time: 6_000, // noon
@@ -199,33 +224,49 @@ pub(super) async fn serve_play(
         )
         .await?;
 
-    // 9. The single spawn chunk (void world) inside a chunk batch.
+    // 12. Chunk batch: flat platform for the whole view distance (not just 0,0).
+    // A single chunk with vd=8 leaves a 16×16 island; missing neighbours make
+    // solid faces cull against void and look "transparent".
     connection
         .write_frame(
             CHUNK_BATCH_START_PACKET_ID,
             &encode_chunk_batch_start_payload(),
         )
         .await?;
-    let chunk = encode_empty_chunk_payload(0, 0, SECTION_COUNT, true, PLAINS_BIOME_ID)?;
-    connection
-        .write_frame(LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, &chunk)
-        .await?;
+    let (chunk_payloads, feet_y) = spawn_chunk_payloads(config, view_distance)?;
+    let batch_size = chunk_payloads.len() as i32;
+    for payload in &chunk_payloads {
+        connection
+            .write_frame(LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, payload)
+            .await?;
+    }
     connection
         .write_frame(
             CHUNK_BATCH_FINISHED_PACKET_ID,
-            &encode_chunk_batch_finished_payload(1),
+            &encode_chunk_batch_finished_payload(batch_size),
         )
         .await?;
 
-    // 10. Teleport the player to the spawn point.
+    // 13. Teleport the player to the spawn point (feet on the platform).
+    let teleport_y = if config.world_dir.as_os_str().is_empty() {
+        spawn_y + 0.5
+    } else {
+        f64::from(feet_y)
+    };
     connection
         .write_frame(
             PLAYER_POSITION_PACKET_ID,
-            &encode_player_position_payload(0, 0.5, spawn_y, 0.5, 0.0, 0.0, 0),
+            &encode_player_position_payload(0, 0.5, teleport_y, 0.5, 0.0, 0.0, 0),
         )
         .await?;
 
-    info!(%username, "player spawned into the world");
+    info!(
+        %username,
+        feet_y = teleport_y,
+        chunks = batch_size,
+        brand = SERVER_BRAND,
+        "player spawned into the world"
+    );
 
     // Keep-alive + chat loop until the client disconnects.
     // First keep-alive after one interval, not immediately (interval() fires right away).
@@ -327,4 +368,57 @@ pub(super) async fn serve_play(
             }
         }
     }
+}
+
+/// Builds `level_chunk_with_light` payloads for every chunk in a square of
+/// half-side `view_distance` around (0, 0).
+///
+/// When `world_dir` is set, each column is loaded from Anvil or generated as a
+/// flat stone platform (not always written back — only bootstrap ensures 0,0).
+/// When empty (unit tests), a single void chunk is returned.
+///
+/// Returns `(payloads, feet_y)`.
+fn spawn_chunk_payloads(
+    config: &ServerConfig,
+    view_distance: i32,
+) -> Result<(Vec<Vec<u8>>, i32), ConnectionError> {
+    if config.world_dir.as_os_str().is_empty() {
+        let payload = encode_empty_chunk_payload(0, 0, SECTION_COUNT, true, PLAINS_BIOME_ID)?;
+        return Ok((vec![payload], config.spawn_y));
+    }
+
+    let ground_y = snap_ground_y(config.spawn_y.saturating_sub(1));
+    let radius = view_distance.max(1);
+    // Cap the first-join batch so a huge view-distance does not stall the
+    // accept loop (vd=8 → 17² = 289 chunks ≈ 15 MB of light-heavy payloads).
+    let radius = radius.min(8);
+    let mut payloads = Vec::with_capacity(((2 * radius + 1) as usize).pow(2));
+    let mut feet_y = ground_y + 1;
+
+    for chunk_z in -radius..=radius {
+        for chunk_x in -radius..=radius {
+            let column = match load_or_flat(&config.world_dir, chunk_x, chunk_z, ground_y) {
+                Ok(col) => col,
+                Err(error) => {
+                    warn!(
+                        world = %config.world_dir.display(),
+                        chunk_x,
+                        chunk_z,
+                        %error,
+                        "chunk load failed; using in-memory flat column"
+                    );
+                    ChunkColumn::flat(chunk_x, chunk_z, ground_y)
+                }
+            };
+            if chunk_x == 0 && chunk_z == 0 {
+                feet_y = column.surface_y;
+            }
+            let payload = column
+                .encode_network_payload(true)
+                .map_err(ConnectionError::from)?;
+            payloads.push(payload);
+        }
+    }
+
+    Ok((payloads, feet_y))
 }

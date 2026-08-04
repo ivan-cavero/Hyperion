@@ -11,11 +11,12 @@
 
 use bytes::{Buf, Bytes, BytesMut};
 use hyperion_protocol::{
-    ACCEPT_CODE_OF_CONDUCT_PACKET_ID, ACKNOWLEDGE_FINISH_CONFIGURATION_PACKET_ID, Cfb8Stream,
-    KNOWN_PACKS_PACKET_ID, LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, LOGIN_PACKET_ID,
-    LOGIN_SUCCESS_PACKET_ID, PLAYER_POSITION_PACKET_ID, PacketFrame, REGISTRY_DATA_PACKET_ID,
-    SET_COMPRESSION_PACKET_ID, SUPPORTED_PROTOCOL_VERSION, UPDATE_TAGS_PACKET_ID, compress_body,
-    decode_packet_data, decode_var_i32, decompress_body, encode_var_i32, split_frame,
+    ACCEPT_CODE_OF_CONDUCT_PACKET_ID, ACKNOWLEDGE_FINISH_CONFIGURATION_PACKET_ID,
+    CUSTOM_PAYLOAD_PLAY_PACKET_ID, Cfb8Stream, KNOWN_PACKS_PACKET_ID,
+    LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, LOGIN_PACKET_ID, LOGIN_SUCCESS_PACKET_ID,
+    PLAYER_POSITION_PACKET_ID, PacketFrame, REGISTRY_DATA_PACKET_ID, SET_COMPRESSION_PACKET_ID,
+    SUPPORTED_PROTOCOL_VERSION, UPDATE_TAGS_PACKET_ID, compress_body, decode_packet_data,
+    decode_var_i32, decompress_body, encode_var_i32, split_frame,
 };
 use rand::rngs::OsRng;
 use rsa::{Pkcs1v15Encrypt, RsaPublicKey};
@@ -187,10 +188,43 @@ pub async fn mock_session_server(
     (address, request_rx)
 }
 
+/// Summary of the Play spawn sequence observed by a mock client.
+#[derive(Debug, Default)]
+pub struct SpawnStats {
+    /// Saw clientbound Login (play).
+    pub saw_login: bool,
+    /// Saw `minecraft:brand` custom payload.
+    pub saw_brand: bool,
+    /// Number of `level_chunk_with_light` packets.
+    pub chunk_count: usize,
+    /// Saw the final player teleport into the world.
+    pub saw_position: bool,
+}
+
+/// Maximum clientbound packets drained while waiting for the spawn teleport.
+///
+/// With a real world directory and view-distance 8 the server sends 289 chunk
+/// packets plus ~15 control packets; 512 leaves headroom without hanging forever.
+pub const SPAWN_DRAIN_LIMIT: usize = 512;
+
 /// Drives a client through the full offline-mode login into Play, consuming
 /// the Configuration handshake and the spawn sequence. Returns the client
 /// ready for further exchanges.
 pub async fn log_into_play(server_address: std::net::SocketAddr) -> MockClient {
+    let (client, stats) = log_into_play_with_stats(server_address).await;
+    assert!(stats.saw_login, "spawn must include Login (play)");
+    assert!(
+        stats.saw_position,
+        "spawn must end with Player Position (drained {} chunks)",
+        stats.chunk_count
+    );
+    client
+}
+
+/// Like [`log_into_play`], but also returns counters for assertions.
+pub async fn log_into_play_with_stats(
+    server_address: std::net::SocketAddr,
+) -> (MockClient, SpawnStats) {
     let mut client = MockClient::connect(server_address).await;
 
     client.write_packet(0, &handshake_payload(2)).await;
@@ -235,20 +269,33 @@ pub async fn log_into_play(server_address: std::net::SocketAddr) -> MockClient {
         .write_packet(ACKNOWLEDGE_FINISH_CONFIGURATION_PACKET_ID, &[])
         .await;
 
-    // --- Play state: consume the spawn sequence ---
-    for _ in 0..15 {
+    let stats = drain_spawn_sequence(&mut client).await;
+    (client, stats)
+}
+
+/// Reads clientbound Play packets until `player_position` or the drain limit.
+pub async fn drain_spawn_sequence(client: &mut MockClient) -> SpawnStats {
+    let mut stats = SpawnStats::default();
+    for _ in 0..SPAWN_DRAIN_LIMIT {
         let packet = client.read_packet().await;
-        if packet.packet_id == LOGIN_PACKET_ID
-            || packet.packet_id == LEVEL_CHUNK_WITH_LIGHT_PACKET_ID
-        {
-            continue;
-        }
-        if packet.packet_id == PLAYER_POSITION_PACKET_ID {
-            break;
+        match packet.packet_id {
+            LOGIN_PACKET_ID => stats.saw_login = true,
+            CUSTOM_PAYLOAD_PLAY_PACKET_ID => {
+                // Brand: channel string + brand string (UTF-8 substrings).
+                let text = String::from_utf8_lossy(&packet.payload);
+                if text.contains("minecraft:brand") {
+                    stats.saw_brand = true;
+                }
+            }
+            LEVEL_CHUNK_WITH_LIGHT_PACKET_ID => stats.chunk_count += 1,
+            PLAYER_POSITION_PACKET_ID => {
+                stats.saw_position = true;
+                break;
+            }
+            _ => {}
         }
     }
-
-    client
+    stats
 }
 
 /// A synthetic Minecraft client that drives the server through real network

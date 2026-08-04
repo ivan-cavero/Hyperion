@@ -19,15 +19,17 @@ use crate::nbt::encode_string_tag;
 pub const CHUNK_BATCH_FINISHED_PACKET_ID: i32 = 11;
 /// ID of the clientbound `chunk_batch_start` packet.
 pub const CHUNK_BATCH_START_PACKET_ID: i32 = 12;
+/// ID of the clientbound Play `custom_payload` packet (plugin message / brand).
+pub const CUSTOM_PAYLOAD_PLAY_PACKET_ID: i32 = 24;
 /// ID of the clientbound `disconnect` packet (Play state).
 pub const DISCONNECT_PACKET_ID: i32 = 32;
-/// ID of the clientbound `game_event` packet.
+/// ID of the clientbound `game_event` / `game_state_change` packet.
 pub const GAME_EVENT_PACKET_ID: i32 = 38;
 /// ID of the clientbound `keep_alive` packet (Play state).
 pub const KEEP_ALIVE_PACKET_ID: i32 = 44;
 /// ID of the clientbound `ping` packet (Play state).
 pub const PING_PACKET_ID: i32 = 61;
-/// ID of the clientbound `level_chunk_with_light` packet.
+/// ID of the clientbound `level_chunk_with_light` / `map_chunk` packet.
 pub const LEVEL_CHUNK_WITH_LIGHT_PACKET_ID: i32 = 45;
 /// ID of the clientbound `login` packet (Play state).
 pub const LOGIN_PACKET_ID: i32 = 49;
@@ -39,12 +41,14 @@ pub const PLAYER_INFO_UPDATE_PACKET_ID: i32 = 70;
 pub const PLAYER_POSITION_PACKET_ID: i32 = 72;
 /// ID of the clientbound `server_data` packet.
 pub const SERVER_DATA_PACKET_ID: i32 = 86;
-/// ID of the clientbound `set_chunk_cache_center` packet.
+/// ID of the clientbound `set_chunk_cache_center` / `update_view_position` packet.
 pub const SET_CHUNK_CACHE_CENTER_PACKET_ID: i32 = 94;
-/// ID of the clientbound `set_chunk_cache_radius` packet.
+/// ID of the clientbound `set_chunk_cache_radius` / `update_view_distance` packet.
 pub const SET_CHUNK_CACHE_RADIUS_PACKET_ID: i32 = 95;
 /// ID of the clientbound `set_default_spawn_position` packet.
 pub const SET_DEFAULT_SPAWN_POSITION_PACKET_ID: i32 = 97;
+/// ID of the clientbound `set_held_item` / `held_item_slot` packet.
+pub const SET_HELD_ITEM_PACKET_ID: i32 = 105;
 /// ID of the clientbound `set_simulation_distance` packet.
 pub const SET_SIMULATION_DISTANCE_PACKET_ID: i32 = 111;
 /// ID of the clientbound `set_time` packet.
@@ -53,6 +57,23 @@ pub const UPDATE_TIME_PACKET_ID: i32 = 113;
 pub const SYSTEM_CHAT_MESSAGE_PACKET_ID: i32 = 121;
 /// ID of the clientbound `set_ticking_state` packet.
 pub const SET_TICKING_STATE_PACKET_ID: i32 = 127;
+
+/// Game event reason: change game mode (`game_state_change` reason 3).
+pub const GAME_EVENT_CHANGE_GAME_MODE: u8 = 3;
+/// Game event reason: start waiting for level chunks (reason 13).
+pub const GAME_EVENT_START_WAITING_FOR_LEVEL_CHUNKS: u8 = 13;
+
+/// Player abilities flag: invulnerable.
+pub const ABILITY_INVULNERABLE: i8 = 0x01;
+/// Player abilities flag: currently flying.
+pub const ABILITY_FLYING: i8 = 0x02;
+/// Player abilities flag: may fly.
+pub const ABILITY_ALLOW_FLYING: i8 = 0x04;
+/// Player abilities flag: creative instant-break / creative inventory.
+pub const ABILITY_CREATIVE_MODE: i8 = 0x08;
+/// Full creative ability set (invulnerable + flying + allow fly + creative).
+pub const ABILITIES_CREATIVE: i8 =
+    ABILITY_INVULNERABLE | ABILITY_FLYING | ABILITY_ALLOW_FLYING | ABILITY_CREATIVE_MODE;
 
 // --- Serverbound (client -> server) packet IDs, Play state ---
 
@@ -224,11 +245,42 @@ pub fn encode_login_payload(login: &LoginPlay) -> Result<Vec<u8>, ProtocolError>
 }
 
 /// Encodes the payload of the clientbound `player_abilities` packet (ID 64).
+///
+/// Second float is walking speed on the wire (vanilla still uses ~0.1 for
+/// creative FOV/walk); kept as [`PlayerAbilities::fov_modifier`] for call-site
+/// compatibility with older docs that called it FOV modifier.
 pub fn encode_player_abilities_payload(abilities: &PlayerAbilities) -> Vec<u8> {
-    let mut writer = ByteWriter::with_capacity(6);
+    let mut writer = ByteWriter::with_capacity(9);
     writer.push_byte(abilities.flags);
     writer.push_f32(abilities.fly_speed);
     writer.push_f32(abilities.fov_modifier);
+    writer.into_bytes()
+}
+
+/// Encodes a Play `custom_payload` (plugin message) packet payload.
+///
+/// Layout: `channel: Identifier` + channel-specific bytes (no outer length).
+pub fn encode_custom_payload(channel: &str, data: &[u8]) -> Result<Vec<u8>, ProtocolError> {
+    let mut writer = ByteWriter::with_capacity(channel.len() + data.len() + 8);
+    writer.push_string(channel, 32767)?;
+    writer.push_bytes(data);
+    Ok(writer.into_bytes())
+}
+
+/// Encodes the standard `minecraft:brand` plugin message data + full payload.
+///
+/// F3 "Server brand" line reads this string (e.g. `"Hyperion"`). Without it the
+/// client shows `null` / vanilla default.
+pub fn encode_brand_payload(brand: &str) -> Result<Vec<u8>, ProtocolError> {
+    let mut data = ByteWriter::with_capacity(brand.len() + 5);
+    data.push_string(brand, 32767)?;
+    encode_custom_payload("minecraft:brand", &data.into_bytes())
+}
+
+/// Encodes the clientbound `set_held_item` payload (hotbar slot 0..=8).
+pub fn encode_set_held_item_payload(slot: i32) -> Vec<u8> {
+    let mut writer = ByteWriter::with_capacity(5);
+    writer.push_var_i32(slot);
     writer.into_bytes()
 }
 
@@ -423,17 +475,66 @@ pub fn encode_disconnect_payload(reason: &str) -> Result<Vec<u8>, ProtocolError>
 
 /// Number of longs in a 256-column heightmap at 9 bits/entry
 /// (ceil(log2(world_height + 1)) for height 384 → 9 bits; 256 cols → 36 longs).
-const HEIGHTMAP_LONG_COUNT: i32 = 36;
+pub const HEIGHTMAP_LONG_COUNT: i32 = 36;
+/// Bits per heightmap entry for a 384-block-tall world.
+pub const HEIGHTMAP_BITS: u32 = 9;
 /// `Heightmap.Types.WORLD_SURFACE` network id.
-const HEIGHTMAP_WORLD_SURFACE: i32 = 1;
+pub const HEIGHTMAP_WORLD_SURFACE: i32 = 1;
 /// `Heightmap.Types.MOTION_BLOCKING` network id.
-const HEIGHTMAP_MOTION_BLOCKING: i32 = 4;
+pub const HEIGHTMAP_MOTION_BLOCKING: i32 = 4;
 /// Length of one light section (16³ nibbles = 2048 bytes).
 const LIGHT_ARRAY_LENGTH: usize = 2048;
 /// Light engine sections for a 24-section world: chunk sections + 2 borders.
 /// Overworld min section Y=-4 → light sections -5..=20 (26 total).
 fn light_section_count(block_section_count: i32) -> i32 {
     block_section_count + 2
+}
+
+/// One section in the network `level_chunk_with_light` section buffer.
+///
+/// Phase 2.1: single-valued block + biome palettes only (enough for flat /
+/// void columns). Multi-valued palettes land with real worldgen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NetworkChunkSection {
+    /// Non-air block count (0..=4096). Client uses this for culling.
+    pub non_air_count: i16,
+    /// Fluid count (0 for solid/air-only sections).
+    pub fluid_count: i16,
+    /// Global block-state palette id filling the whole section (0 = air).
+    pub block_state_id: i32,
+    /// Global biome id filling the whole section.
+    pub biome_id: i32,
+}
+
+impl NetworkChunkSection {
+    /// All-air section with the given biome.
+    pub const fn air(biome_id: i32) -> Self {
+        Self {
+            non_air_count: 0,
+            fluid_count: 0,
+            block_state_id: 0,
+            biome_id,
+        }
+    }
+
+    /// Solid single-block section (non-air count = 4096).
+    pub const fn solid(block_state_id: i32, biome_id: i32) -> Self {
+        Self {
+            non_air_count: 4096,
+            fluid_count: 0,
+            block_state_id,
+            biome_id,
+        }
+    }
+}
+
+/// One heightmap entry for the network chunk packet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NetworkHeightmap {
+    /// `Heightmap.Types` network enum id.
+    pub type_id: i32,
+    /// Packed long array (`HEIGHTMAP_LONG_COUNT` entries for overworld).
+    pub data: Vec<i64>,
 }
 
 /// Encodes a single-valued paletted container (BPE = 0):
@@ -448,13 +549,13 @@ fn write_single_valued_palette(out: &mut Vec<u8>, global_id: i32) {
     // ZeroBitStorage: writeFixedSizeLongArray of length 0 → nothing.
 }
 
-/// Encodes one empty (all-air) chunk section for protocol 776 / 26.2:
+/// Encodes one section for protocol 776 / 26.2:
 /// `blockCount: short`, `fluidCount: short`, block palette, biome palette.
-fn write_empty_section(out: &mut Vec<u8>, biome_id: i32) {
-    out.extend_from_slice(&0i16.to_be_bytes()); // non-air block count
-    out.extend_from_slice(&0i16.to_be_bytes()); // fluid count (new in recent protocols)
-    write_single_valued_palette(out, 0); // air block state id 0
-    write_single_valued_palette(out, biome_id);
+fn write_section(out: &mut Vec<u8>, section: &NetworkChunkSection) {
+    out.extend_from_slice(&section.non_air_count.to_be_bytes());
+    out.extend_from_slice(&section.fluid_count.to_be_bytes());
+    write_single_valued_palette(out, section.block_state_id);
+    write_single_valued_palette(out, section.biome_id);
 }
 
 /// Writes a BitSet as `VarInt(longCount) + longCount × i64` (vanilla format).
@@ -468,8 +569,38 @@ fn write_bit_set(writer: &mut ByteWriter, bits: u64, long_count: i32) {
     }
 }
 
+/// Packs 256 height values (one per column, X then Z) into the network
+/// heightmap long array.
+///
+/// Heightmaps use **compact** bit packing that **crosses long boundaries**
+/// (`256 × 9 / 64 = 36` longs exactly). This differs from post-1.16 block
+/// palettes, which do not pack across longs.
+///
+/// Values are absolute world Y for the highest matching block (vanilla
+/// `Heightmap` stores the Y of the first empty block above the surface for
+/// some types; callers choose the semantics).
+pub fn pack_heightmap_values(heights: &[u16; 256]) -> Vec<i64> {
+    let bits = HEIGHTMAP_BITS as usize;
+    let long_count = HEIGHTMAP_LONG_COUNT as usize;
+    let mut longs = vec![0i64; long_count];
+    let mask = (1u64 << bits) - 1;
+    for (index, &height) in heights.iter().enumerate() {
+        let bit_index = index * bits;
+        let long_index = bit_index / 64;
+        let offset = bit_index % 64;
+        let value = u64::from(height) & mask;
+        longs[long_index] |= (value << offset) as i64;
+        // Spill into the next long when the 9-bit field crosses a boundary.
+        let bits_in_first = 64 - offset;
+        if bits_in_first < bits {
+            longs[long_index + 1] |= (value >> bits_in_first) as i64;
+        }
+    }
+    longs
+}
+
 /// Encodes the payload of the clientbound `level_chunk_with_light` packet
-/// (ID 45) for an all-air chunk with full-brightness sky light.
+/// (ID 45) for an arbitrary column described by single-value sections.
 ///
 /// Format verified against 26.2 (`LevelChunkSection` / `PalettedContainer` /
 /// `Heightmap.Types` bytecode + wiki Chunk format ≥ 1.21.5):
@@ -478,32 +609,32 @@ fn write_bit_set(writer: &mut ByteWriter, bits: u64, long_count: i32) {
 /// - Single-value palettes are `bits=0 + VarInt value` (no palette length,
 ///   no data-array length).
 /// - Light section count = block sections + 2.
-pub fn encode_empty_chunk_payload(
+pub fn encode_chunk_payload(
     chunk_x: i32,
     chunk_z: i32,
-    section_count: i32,
+    heightmaps: &[NetworkHeightmap],
+    sections: &[NetworkChunkSection],
     has_sky_light: bool,
-    biome_id: i32,
 ) -> Result<Vec<u8>, ProtocolError> {
+    let section_count = sections.len() as i32;
     let mut writer = ByteWriter::with_capacity(64 * 1024);
 
     writer.push_i32(chunk_x);
     writer.push_i32(chunk_z);
 
-    // Heightmaps: type id (VarInt) + long array. All zeros for an air world.
-    writer.push_var_i32(2);
-    for heightmap_type in [HEIGHTMAP_WORLD_SURFACE, HEIGHTMAP_MOTION_BLOCKING] {
-        writer.push_var_i32(heightmap_type);
-        writer.push_var_i32(HEIGHTMAP_LONG_COUNT);
-        for _ in 0..HEIGHTMAP_LONG_COUNT {
-            writer.push_i64(0);
+    writer.push_var_i32(heightmaps.len() as i32);
+    for heightmap in heightmaps {
+        writer.push_var_i32(heightmap.type_id);
+        writer.push_var_i32(heightmap.data.len() as i32);
+        for &value in &heightmap.data {
+            writer.push_i64(value);
         }
     }
 
     // Section buffer (NOT length-prefixed inside; outer size is a VarInt).
-    let mut data = Vec::with_capacity(section_count as usize * 12);
-    for _ in 0..section_count {
-        write_empty_section(&mut data, biome_id);
+    let mut data = Vec::with_capacity(sections.len() * 12);
+    for section in sections {
+        write_section(&mut data, section);
     }
     writer.push_byte_array(&data, usize::MAX)?;
 
@@ -538,6 +669,33 @@ pub fn encode_empty_chunk_payload(
     }
 
     Ok(writer.into_bytes())
+}
+
+/// Encodes an all-air chunk with full-brightness sky light (void world).
+///
+/// Convenience wrapper around [`encode_chunk_payload`].
+pub fn encode_empty_chunk_payload(
+    chunk_x: i32,
+    chunk_z: i32,
+    section_count: i32,
+    has_sky_light: bool,
+    biome_id: i32,
+) -> Result<Vec<u8>, ProtocolError> {
+    let zero_heightmap = vec![0i64; HEIGHTMAP_LONG_COUNT as usize];
+    let heightmaps = [
+        NetworkHeightmap {
+            type_id: HEIGHTMAP_WORLD_SURFACE,
+            data: zero_heightmap.clone(),
+        },
+        NetworkHeightmap {
+            type_id: HEIGHTMAP_MOTION_BLOCKING,
+            data: zero_heightmap,
+        },
+    ];
+    let sections: Vec<NetworkChunkSection> = (0..section_count)
+        .map(|_| NetworkChunkSection::air(biome_id))
+        .collect();
+    encode_chunk_payload(chunk_x, chunk_z, &heightmaps, &sections, has_sky_light)
 }
 
 // ---------------------------------------------------------------------------
@@ -935,9 +1093,63 @@ mod tests {
     #[test]
     fn empty_section_is_two_shorts_and_two_single_value_palettes() {
         let mut section = Vec::new();
-        write_empty_section(&mut section, 0);
+        write_section(&mut section, &NetworkChunkSection::air(0));
         // blockCount=0, fluidCount=0, blocks: 0x00 + varint 0, biomes: 0x00 + varint 0
         assert_eq!(section, vec![0, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn brand_payload_starts_with_channel_and_brand() {
+        let payload = encode_brand_payload("Hyperion").expect("brand");
+        // Channel "minecraft:brand" as a protocol string, then brand string.
+        assert!(payload.len() > 20);
+        // Contains both ASCII strings.
+        let as_str = String::from_utf8_lossy(&payload);
+        assert!(as_str.contains("minecraft:brand"));
+        assert!(as_str.contains("Hyperion"));
+    }
+
+    #[test]
+    fn pack_heightmap_constant_surface() {
+        let heights = [64u16; 256];
+        let packed = pack_heightmap_values(&heights);
+        assert_eq!(packed.len(), HEIGHTMAP_LONG_COUNT as usize);
+        // Compact packing: first entry is the low 9 bits of long 0.
+        let bits = HEIGHTMAP_BITS;
+        let mask = (1u64 << bits) - 1;
+        assert_eq!((packed[0] as u64) & mask, 64);
+        // Entry 1 starts at bit 9.
+        assert_eq!((packed[0] as u64 >> 9) & mask, 64);
+        // 256 × 9 = 2304 bits = exactly 36 longs — last long fully used.
+        assert_ne!(packed[35], 0);
+    }
+
+    #[test]
+    fn solid_chunk_payload_larger_than_empty_dark() {
+        let sections: Vec<_> = (0..24)
+            .map(|i| {
+                if i < 8 {
+                    NetworkChunkSection::solid(1, 0)
+                } else {
+                    NetworkChunkSection::air(0)
+                }
+            })
+            .collect();
+        let heights = [64u16; 256];
+        let packed = pack_heightmap_values(&heights);
+        let heightmaps = [
+            NetworkHeightmap {
+                type_id: HEIGHTMAP_WORLD_SURFACE,
+                data: packed.clone(),
+            },
+            NetworkHeightmap {
+                type_id: HEIGHTMAP_MOTION_BLOCKING,
+                data: packed,
+            },
+        ];
+        let payload = encode_chunk_payload(0, 0, &heightmaps, &sections, true).expect("encodes");
+        assert!(payload.len() > 50_000);
+        assert_eq!(&payload[..4], &[0, 0, 0, 0]);
     }
 
     #[test]

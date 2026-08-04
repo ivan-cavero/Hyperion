@@ -46,8 +46,8 @@ pub const DEFAULT_MAX_PLAYERS: i32 = 20;
 /// Default concurrent TCP connection cap (anti-DoS backpressure).
 pub const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
-/// Default spawn Y until worldgen provides a real surface.
-pub const DEFAULT_SPAWN_Y: i32 = 100;
+/// Default spawn feet Y on the Phase 2.1 flat platform (ground top = 63).
+pub const DEFAULT_SPAWN_Y: i32 = 64;
 
 /// Default vanilla `level-name` (world folder under the server root, and
 /// default NBT `LevelName` written into a new `level.dat`).
@@ -98,9 +98,13 @@ pub struct ServerConfig {
     /// Vanilla `level-seed`. `0` = random seed on first `level.dat` creation
     /// only (persisted as `RandomSeed` / `WorldGenSettings.seed`).
     pub level_seed: i64,
-    /// Default spawn Y written into a new `level.dat` as `SpawnY` (Hyperion
-    /// extension until worldgen provides a real surface).
+    /// Default spawn Y written into a new `level.dat` as `SpawnY` (player
+    /// feet height on the flat platform until worldgen provides a surface).
     pub spawn_y: i32,
+    /// World directory (`root/<level-name>/`) used to load Anvil chunks in
+    /// Play. Empty means “no world” — Play falls back to a synthetic void
+    /// chunk (used by unit tests that never bootstrap a data directory).
+    pub world_dir: PathBuf,
     /// How often the server sends a keep-alive to each player.
     pub keep_alive_interval_seconds: u64,
     /// How long a player may stay silent after a keep-alive before being kicked.
@@ -123,6 +127,7 @@ impl Default for ServerConfig {
             level_name: DEFAULT_LEVEL_NAME.to_owned(),
             level_seed: DEFAULT_LEVEL_SEED,
             spawn_y: DEFAULT_SPAWN_Y,
+            world_dir: PathBuf::new(),
             keep_alive_interval_seconds: DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS,
             keep_alive_timeout_seconds: DEFAULT_KEEP_ALIVE_TIMEOUT_SECONDS,
         }

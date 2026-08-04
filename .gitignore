@@ -20,6 +20,11 @@ Thumbs.db
 *.log
 server.properties
 world/
+ops.json
+whitelist.json
+banned-players.json
+banned-ips.json
+usercache.json
 
 # Local play/dev server data (preferred working directory for manual runs).
 # Keep the folder itself in git; ignore everything generated inside it.

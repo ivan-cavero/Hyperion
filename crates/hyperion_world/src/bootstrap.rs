@@ -11,6 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::chunk::{ensure_spawn_chunk, snap_ground_y};
 use crate::error::WorldError;
 use crate::level_dat::{LevelMeta, write_level_dat};
 
@@ -116,6 +117,13 @@ pub fn prepare_data_directory(config: &BootstrapConfig) -> Result<DataPaths, Wor
 
     let region_dir = world_dir.join("region");
     fs::create_dir_all(&region_dir).map_err(|source| WorldError::io(&region_dir, source))?;
+
+    // Phase 2.1: ensure spawn chunk (0,0) exists as a flat stone platform so
+    // Play can serve real Anvil data instead of a synthetic void column.
+    // `spawn_y` is feet height; ground is one block below, snapped to a
+    // section top for single-value sections.
+    let ground_y = snap_ground_y(config.spawn_y.saturating_sub(1));
+    ensure_spawn_chunk(&world_dir, ground_y)?;
 
     let ops = root.join("ops.json");
     let whitelist = root.join("whitelist.json");
@@ -253,6 +261,21 @@ mod tests {
         let nbt = gzip_decompress(&compressed).expect("gzip");
         let (name, _) = decode_named_tag(&nbt).expect("storage nbt");
         assert_eq!(name, "");
+
+        // Spawn chunk (0,0) must exist under region/.
+        let region_file = paths.region_dir.join("r.0.0.mca");
+        assert!(
+            region_file.is_file(),
+            "bootstrap should write r.0.0.mca with the spawn chunk"
+        );
+        let spawn = crate::load_chunk(&paths.world_dir, 0, 0)
+            .expect("load spawn")
+            .expect("spawn present");
+        assert_eq!(
+            spawn.sections[0].block,
+            crate::BlockState::stone(),
+            "bottom should be solid stone"
+        );
 
         let _ = fs::remove_dir_all(&root);
     }

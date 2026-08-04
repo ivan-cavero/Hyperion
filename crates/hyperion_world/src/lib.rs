@@ -1,15 +1,16 @@
 //! Hyperion world.
 //!
-//! Phase 2 foundation (partial): vanilla-like server data directory bootstrap
-//! and minimal `level.dat` (gzipped **storage NBT**). Terminology matches
-//! Java Edition / `server.properties`:
+//! Phase 2: vanilla-like server data directory bootstrap, minimal `level.dat`,
+//! Anvil region I/O, and **chunk columns** (storage NBT + network encoding).
+//! Terminology matches Java Edition / `server.properties`:
 //! - `level-name` → world folder + NBT `LevelName`
 //! - `level-seed` → NBT `RandomSeed` / `WorldGenSettings.seed` (0 = random once)
 //!
-//! Anvil region I/O is available; full chunk schema / worldgen / HCF follow.
+//! Worldgen / multi-palette sections / HCF follow later in Phase 2.
 
 mod anvil;
 mod bootstrap;
+mod chunk;
 mod error;
 mod gzip_util;
 mod level_dat;
@@ -19,6 +20,11 @@ pub use anvil::{
     SECTOR_SIZE, chunk_index, chunk_to_region, region_file_name, region_path,
 };
 pub use bootstrap::{BootstrapConfig, DataPaths, prepare_data_directory};
+pub use chunk::{
+    BLOCK_STATE_AIR, BLOCK_STATE_BEDROCK, BLOCK_STATE_STONE, BlockState, ChunkColumn, ChunkSection,
+    MAX_SECTION_Y, MIN_SECTION_Y, PLAINS_BIOME, PLAINS_BIOME_NETWORK_ID, SECTION_COUNT,
+    ensure_spawn_chunk, load_chunk, load_or_flat, save_chunk, snap_ground_y,
+};
 pub use error::WorldError;
 pub use gzip_util::{gzip_compress, gzip_decompress};
 pub use level_dat::{DEFAULT_DATA_VERSION, LevelMeta, read_level_dat, write_level_dat};

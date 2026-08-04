@@ -6,10 +6,10 @@ mod common;
 use hyperion_protocol::{
     ACCEPT_CODE_OF_CONDUCT_PACKET_ID, ACKNOWLEDGE_FINISH_CONFIGURATION_PACKET_ID,
     CODE_OF_CONDUCT_PACKET_ID, ENCRYPTION_REQUEST_PACKET_ID, FINISH_CONFIGURATION_PACKET_ID,
-    KNOWN_PACKS_PACKET_ID, LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, LOGIN_DISCONNECT_PACKET_ID,
-    LOGIN_PACKET_ID, LOGIN_SUCCESS_PACKET_ID, PLAYER_POSITION_PACKET_ID, REGISTRY_DATA_PACKET_ID,
-    SELECT_KNOWN_PACKS_PACKET_ID, SET_COMPRESSION_PACKET_ID, UPDATE_ENABLED_FEATURES_PACKET_ID,
-    UPDATE_TAGS_PACKET_ID, decode_var_i32, encode_var_i32, server_id_hash,
+    KNOWN_PACKS_PACKET_ID, LOGIN_DISCONNECT_PACKET_ID, LOGIN_SUCCESS_PACKET_ID,
+    REGISTRY_DATA_PACKET_ID, SELECT_KNOWN_PACKS_PACKET_ID, SET_COMPRESSION_PACKET_ID,
+    UPDATE_ENABLED_FEATURES_PACKET_ID, UPDATE_TAGS_PACKET_ID, decode_var_i32, encode_var_i32,
+    server_id_hash,
 };
 use rand::RngCore;
 use rand::rngs::OsRng;
@@ -172,23 +172,21 @@ async fn logs_in_online_with_encryption_and_session_verification() {
         .write_packet(ACKNOWLEDGE_FINISH_CONFIGURATION_PACKET_ID, &[])
         .await;
 
-    // --- Play state: the spawn sequence ---
-    let mut saw_login = false;
-    let mut saw_chunk = false;
-    for _ in 0..15 {
-        let packet = client.read_packet().await;
-        if packet.packet_id == LOGIN_PACKET_ID {
-            saw_login = true;
-        }
-        if packet.packet_id == LEVEL_CHUNK_WITH_LIGHT_PACKET_ID {
-            saw_chunk = true;
-        }
-        if packet.packet_id == PLAYER_POSITION_PACKET_ID {
-            break;
-        }
-    }
-    assert!(saw_login, "spawn sequence must include Login (play)");
-    assert!(saw_chunk, "spawn sequence must include the spawn chunk");
+    // --- Play state: brand + chunks + teleport ---
+    let stats = common::drain_spawn_sequence(&mut client).await;
+    assert!(stats.saw_login, "spawn sequence must include Login (play)");
+    assert!(
+        stats.saw_brand,
+        "spawn sequence must include minecraft:brand"
+    );
+    assert!(
+        stats.chunk_count >= 1,
+        "spawn sequence must include at least one chunk"
+    );
+    assert!(
+        stats.saw_position,
+        "spawn sequence must end with Player Position"
+    );
 
     // Closing the client ends the keep-alive/chat loop cleanly.
     drop(client);
