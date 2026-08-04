@@ -45,6 +45,7 @@ pub(super) async fn serve_status(
                 connection
                     .write_frame(STATUS_RESPONSE_PACKET_ID, &payload)
                     .await?;
+                connection.flush().await?;
             }
             // Ping Request (1): Pong with the same payload.
             1 => {
@@ -53,6 +54,7 @@ pub(super) async fn serve_status(
                 connection
                     .write_frame(PONG_RESPONSE_PACKET_ID, &ping.payload.to_be_bytes())
                     .await?;
+                connection.flush().await?;
             }
             _ => return Ok(()),
         }

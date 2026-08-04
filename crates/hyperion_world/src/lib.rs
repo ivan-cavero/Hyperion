@@ -22,8 +22,9 @@ pub use anvil::{
 pub use bootstrap::{BootstrapConfig, DataPaths, prepare_data_directory};
 pub use chunk::{
     BLOCK_STATE_AIR, BLOCK_STATE_BEDROCK, BLOCK_STATE_STONE, BlockState, ChunkColumn, ChunkSection,
-    MAX_SECTION_Y, MIN_SECTION_Y, PLAINS_BIOME, PLAINS_BIOME_NETWORK_ID, SECTION_COUNT,
-    ensure_spawn_chunk, load_chunk, load_or_flat, save_chunk, snap_ground_y,
+    FlatNetworkCache, MAX_SECTION_Y, MIN_SECTION_Y, PLAINS_BIOME, PLAINS_BIOME_NETWORK_ID,
+    SECTION_COUNT, block_to_chunk, ensure_flat_on_disk, ensure_spawn_chunk, load_chunk,
+    load_or_create_flat, load_or_flat, position_to_chunk, save_chunk, snap_ground_y,
 };
 pub use error::WorldError;
 pub use gzip_util::{gzip_compress, gzip_decompress};

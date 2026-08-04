@@ -29,6 +29,8 @@ pub const GAME_EVENT_PACKET_ID: i32 = 38;
 pub const KEEP_ALIVE_PACKET_ID: i32 = 44;
 /// ID of the clientbound `ping` packet (Play state).
 pub const PING_PACKET_ID: i32 = 61;
+/// ID of the clientbound `unload_chunk` packet.
+pub const UNLOAD_CHUNK_PACKET_ID: i32 = 37;
 /// ID of the clientbound `level_chunk_with_light` / `map_chunk` packet.
 pub const LEVEL_CHUNK_WITH_LIGHT_PACKET_ID: i32 = 45;
 /// ID of the clientbound `login` packet (Play state).
@@ -284,6 +286,16 @@ pub fn encode_set_held_item_payload(slot: i32) -> Vec<u8> {
     writer.into_bytes()
 }
 
+/// Encodes the clientbound `unload_chunk` payload (protocol 776 / 26.2).
+///
+/// Wire order is **Z then X** (matches the 26.1/26.2 packet dump).
+pub fn encode_unload_chunk_payload(chunk_x: i32, chunk_z: i32) -> Vec<u8> {
+    let mut writer = ByteWriter::with_capacity(8);
+    writer.push_i32(chunk_z);
+    writer.push_i32(chunk_x);
+    writer.into_bytes()
+}
+
 /// Encodes the payload of the clientbound `player_info_update` packet (ID 70).
 ///
 /// Every entry carries the Add Player, Update Game Mode, Update Listed and
@@ -484,6 +496,9 @@ pub const HEIGHTMAP_WORLD_SURFACE: i32 = 1;
 pub const HEIGHTMAP_MOTION_BLOCKING: i32 = 4;
 /// Length of one light section (16³ nibbles = 2048 bytes).
 const LIGHT_ARRAY_LENGTH: usize = 2048;
+/// Full-bright sky/block light section — static so hot encode paths do not
+/// allocate 2 KiB per light section (vanilla/Paper reuse buffers too).
+static FULL_BRIGHT_LIGHT: [u8; LIGHT_ARRAY_LENGTH] = [0xff; LIGHT_ARRAY_LENGTH];
 /// Light engine sections for a 24-section world: chunk sections + 2 borders.
 /// Overworld min section Y=-4 → light sections -5..=20 (26 total).
 fn light_section_count(block_section_count: i32) -> i32 {
@@ -656,7 +671,7 @@ pub fn encode_chunk_payload(
         writer.push_var_i32(light_sections); // sky light arrays
         for _ in 0..light_sections {
             writer.push_var_i32(LIGHT_ARRAY_LENGTH as i32);
-            writer.push_bytes(&[0xffu8; LIGHT_ARRAY_LENGTH]);
+            writer.push_bytes(&FULL_BRIGHT_LIGHT);
         }
         writer.push_var_i32(0); // block light arrays
     } else {

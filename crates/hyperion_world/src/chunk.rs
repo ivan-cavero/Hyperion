@@ -352,6 +352,44 @@ impl ChunkColumn {
     }
 }
 
+/// Cached network encoding of a **flat** column shared by every (x, z).
+///
+/// Flat worlds only differ by chunk coordinates in the packet header. Rebuilding
+/// ~50 KiB of full-bright light per column is what made flying feel slower than
+/// vanilla; a template clone+patch is the correct hot path until multi-palette
+/// worldgen needs unique section data.
+#[derive(Debug, Clone)]
+pub struct FlatNetworkCache {
+    /// Fully encoded payload for chunk (0, 0).
+    template: Vec<u8>,
+    /// Snapped ground Y used to build the template.
+    pub ground_y: i32,
+    /// Feet Y for spawn on this platform.
+    pub surface_y: i32,
+}
+
+impl FlatNetworkCache {
+    /// Builds the template once for the given preferred ground Y.
+    pub fn new(ground_y: i32) -> Result<Self, ProtocolError> {
+        let ground_y = snap_ground_y(ground_y);
+        let column = ChunkColumn::flat(0, 0, ground_y);
+        let template = column.encode_network_payload(true)?;
+        Ok(Self {
+            template,
+            ground_y,
+            surface_y: column.surface_y,
+        })
+    }
+
+    /// Clones the template and patches `chunk_x` / `chunk_z` (first 8 bytes).
+    pub fn payload(&self, chunk_x: i32, chunk_z: i32) -> Vec<u8> {
+        let mut bytes = self.template.clone();
+        bytes[0..4].copy_from_slice(&chunk_x.to_be_bytes());
+        bytes[4..8].copy_from_slice(&chunk_z.to_be_bytes());
+        bytes
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Anvil I/O helpers
 // ---------------------------------------------------------------------------
@@ -393,13 +431,7 @@ pub fn ensure_spawn_chunk(
     world_dir: impl AsRef<Path>,
     ground_y: i32,
 ) -> Result<(ChunkColumn, bool), WorldError> {
-    let world_dir = world_dir.as_ref();
-    if let Some(existing) = load_chunk(world_dir, 0, 0)? {
-        return Ok((existing, false));
-    }
-    let column = ChunkColumn::flat(0, 0, ground_y);
-    save_chunk(world_dir, &column)?;
-    Ok((column, true))
+    load_or_create_flat(world_dir, 0, 0, ground_y)
 }
 
 /// Loads chunk `(chunk_x, chunk_z)` or builds a flat column (without saving).
@@ -413,6 +445,65 @@ pub fn load_or_flat(
         return Ok(existing);
     }
     Ok(ChunkColumn::flat(chunk_x, chunk_z, ground_y))
+}
+
+/// Loads a chunk or generates a flat one and **persists** it to Anvil.
+///
+/// Returns `(column, created)` where `created` is true when the file was
+/// written for the first time. Used by Play streaming so explored terrain
+/// survives restarts (Phase 2.2).
+pub fn load_or_create_flat(
+    world_dir: impl AsRef<Path>,
+    chunk_x: i32,
+    chunk_z: i32,
+    ground_y: i32,
+) -> Result<(ChunkColumn, bool), WorldError> {
+    let world_dir = world_dir.as_ref();
+    if let Some(existing) = load_chunk(world_dir, chunk_x, chunk_z)? {
+        return Ok((existing, false));
+    }
+    let column = ChunkColumn::flat(chunk_x, chunk_z, ground_y);
+    save_chunk(world_dir, &column)?;
+    Ok((column, true))
+}
+
+/// Ensures a flat column exists on disk **without** reading/decoding NBT when
+/// the slot is already occupied (header check only).
+///
+/// Prefer this on the streaming hot path: network uses [`FlatNetworkCache`];
+/// disk is append-only when missing.
+pub fn ensure_flat_on_disk(
+    world_dir: impl AsRef<Path>,
+    chunk_x: i32,
+    chunk_z: i32,
+    ground_y: i32,
+) -> Result<bool, WorldError> {
+    let world_dir = world_dir.as_ref();
+    let (rx, rz) = crate::anvil::chunk_to_region(chunk_x, chunk_z);
+    let path = region_path(world_dir, rx, rz);
+    let region = RegionFile::open_or_create(&path)?;
+    if region.has_chunk(chunk_x, chunk_z)? {
+        return Ok(false);
+    }
+    let column = ChunkColumn::flat(chunk_x, chunk_z, ground_y);
+    let nbt = column.encode_storage_nbt()?;
+    region.write_chunk(chunk_x, chunk_z, &nbt)?;
+    Ok(true)
+}
+
+/// Converts a block coordinate to a chunk coordinate (vanilla `>> 4` / floor div).
+#[inline]
+pub fn block_to_chunk(block: i32) -> i32 {
+    block.div_euclid(16)
+}
+
+/// Converts a player/entity world position to chunk coordinates.
+#[inline]
+pub fn position_to_chunk(x: f64, z: f64) -> (i32, i32) {
+    (
+        block_to_chunk(x.floor() as i32),
+        block_to_chunk(z.floor() as i32),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -634,11 +725,52 @@ mod tests {
     }
 
     #[test]
+    fn load_or_create_flat_persists_new_columns() {
+        let world = temp_world("persist");
+        let (col, created) = load_or_create_flat(&world, 3, -2, 63).expect("create");
+        assert!(created);
+        assert_eq!(col.x, 3);
+        assert_eq!(col.z, -2);
+        let again = load_chunk(&world, 3, -2).expect("load").expect("present");
+        assert_eq!(again.sections.len(), SECTION_COUNT);
+        let (_, created_again) = load_or_create_flat(&world, 3, -2, 63).expect("second");
+        assert!(!created_again);
+        let _ = std::fs::remove_dir_all(&world);
+    }
+
+    #[test]
+    fn position_to_chunk_matches_vanilla_floor_div() {
+        assert_eq!(position_to_chunk(0.0, 0.0), (0, 0));
+        assert_eq!(position_to_chunk(15.9, 16.0), (0, 1));
+        assert_eq!(position_to_chunk(-0.1, -16.0), (-1, -1));
+        assert_eq!(block_to_chunk(-1), -1);
+        assert_eq!(block_to_chunk(16), 1);
+    }
+
+    #[test]
     fn network_payload_encodes() {
         let col = ChunkColumn::flat(0, 0, 63);
         let payload = col.encode_network_payload(true).expect("network");
         // Same ballpark as the empty-chunk smoke test (light dominates size).
         assert!(payload.len() > 50_000 && payload.len() < 80_000);
         assert_eq!(&payload[..8], &[0, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn flat_cache_builds_hundreds_of_payloads_quickly() {
+        use std::time::Instant;
+        let cache = FlatNetworkCache::new(63).expect("cache");
+        let start = Instant::now();
+        for z in -8..=8 {
+            for x in -8..=8 {
+                let p = cache.payload(x, z);
+                assert_eq!(&p[..4], &x.to_be_bytes());
+            }
+        }
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed.as_millis() < 100,
+            "289 template clones took {elapsed:?} (expected <100ms)"
+        );
     }
 }

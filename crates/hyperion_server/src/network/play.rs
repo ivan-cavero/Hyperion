@@ -21,9 +21,10 @@ use hyperion_protocol::{
     SERVER_DATA_PACKET_ID, SERVERBOUND_KEEP_ALIVE_PACKET_ID, SET_CHUNK_CACHE_CENTER_PACKET_ID,
     SET_CHUNK_CACHE_RADIUS_PACKET_ID, SET_DEFAULT_SPAWN_POSITION_PACKET_ID,
     SET_HELD_ITEM_PACKET_ID, SET_SIMULATION_DISTANCE_PACKET_ID, SET_TICKING_STATE_PACKET_ID,
-    SYSTEM_CHAT_MESSAGE_PACKET_ID, ServerData, TimeClock, UPDATE_TIME_PACKET_ID,
-    decode_chat_message, decode_chunk_batch_received, decode_client_information,
-    decode_client_tick_end, decode_confirm_teleportation, decode_keep_alive,
+    SYSTEM_CHAT_MESSAGE_PACKET_ID, ServerData, TimeClock, UNLOAD_CHUNK_PACKET_ID,
+    UPDATE_TIME_PACKET_ID, decode_chat_message, decode_chunk_batch_received,
+    decode_client_information, decode_client_tick_end, decode_confirm_teleportation,
+    decode_keep_alive, decode_move_player_pos, decode_move_player_pos_rot,
     decode_play_ping_request, decode_player_loaded, encode_brand_payload,
     encode_chunk_batch_finished_payload, encode_chunk_batch_start_payload,
     encode_disconnect_payload, encode_empty_chunk_payload, encode_game_event_payload,
@@ -33,12 +34,12 @@ use hyperion_protocol::{
     encode_set_chunk_cache_center_payload, encode_set_chunk_cache_radius_payload,
     encode_set_default_spawn_position_payload, encode_set_held_item_payload,
     encode_set_simulation_distance_payload, encode_set_ticking_state_payload,
-    encode_system_chat_message_payload, encode_update_time_payload,
+    encode_system_chat_message_payload, encode_unload_chunk_payload, encode_update_time_payload,
 };
-use hyperion_world::{ChunkColumn, load_or_flat, snap_ground_y};
 use tokio::time::{Instant, interval_at};
 use tracing::{info, trace, warn};
 
+use super::chunk_view::{ChunkView, ViewUpdate};
 use super::configuration::{OVERWORLD_DIMENSION_TYPE_ID, PLAINS_BIOME_ID, SECTION_COUNT};
 use super::connection::{Connection, ConnectionError};
 use crate::config::ServerConfig;
@@ -224,22 +225,35 @@ pub(super) async fn serve_play(
         )
         .await?;
 
-    // 12. Chunk batch: flat platform for the whole view distance (not just 0,0).
-    // A single chunk with vd=8 leaves a 16×16 island; missing neighbours make
-    // solid faces cull against void and look "transparent".
+    // 12. Chunk batch — stream encode→write without holding 289×50 KiB in RAM.
+    // Disk is lazy (dirty set); one TCP flush after the batch (not per chunk).
+    let (mut chunk_view, feet_y, initial_count) =
+        ChunkView::spawn(config.world_dir.clone(), view_distance, config.spawn_y)
+            .map_err(ConnectionError::from)?;
     connection
         .write_frame(
             CHUNK_BATCH_START_PACKET_ID,
             &encode_chunk_batch_start_payload(),
         )
         .await?;
-    let (chunk_payloads, feet_y) = spawn_chunk_payloads(config, view_distance)?;
-    let batch_size = chunk_payloads.len() as i32;
-    for payload in &chunk_payloads {
+    let batch_size = if chunk_view.streaming_enabled() {
+        for (chunk_x, chunk_z) in chunk_view.initial_coords() {
+            let payload = chunk_view
+                .payload(chunk_x, chunk_z)
+                .expect("streaming view has network cache");
+            connection
+                .write_frame(LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, &payload)
+                .await?;
+        }
+        initial_count
+    } else {
+        // Unit tests / no world_dir: single synthetic void column.
+        let payload = encode_empty_chunk_payload(0, 0, SECTION_COUNT, true, PLAINS_BIOME_ID)?;
         connection
-            .write_frame(LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, payload)
+            .write_frame(LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, &payload)
             .await?;
-    }
+        1
+    };
     connection
         .write_frame(
             CHUNK_BATCH_FINISHED_PACKET_ID,
@@ -248,10 +262,10 @@ pub(super) async fn serve_play(
         .await?;
 
     // 13. Teleport the player to the spawn point (feet on the platform).
-    let teleport_y = if config.world_dir.as_os_str().is_empty() {
-        spawn_y + 0.5
-    } else {
+    let teleport_y = if chunk_view.streaming_enabled() {
         f64::from(feet_y)
+    } else {
+        spawn_y + 0.5
     };
     connection
         .write_frame(
@@ -259,16 +273,25 @@ pub(super) async fn serve_play(
             &encode_player_position_payload(0, 0.5, teleport_y, 0.5, 0.0, 0.0, 0),
         )
         .await?;
+    // Client must see spawn+teleport before the keep-alive loop.
+    connection.flush().await?;
+
+    // Lazy disk: a small budget so join stays fast; rest drains on later ticks.
+    let persisted = chunk_view.flush_dirty_budget(16);
+    if persisted > 0 {
+        trace!(persisted, "lazy anvil flush after spawn");
+    }
 
     info!(
         %username,
         feet_y = teleport_y,
         chunks = batch_size,
+        streaming = chunk_view.streaming_enabled(),
         brand = SERVER_BRAND,
         "player spawned into the world"
     );
 
-    // Keep-alive + chat loop until the client disconnects.
+    // Keep-alive + chat + chunk streaming until the client disconnects.
     // First keep-alive after one interval, not immediately (interval() fires right away).
     let keep_alive_period = Duration::from_secs(config.keep_alive_interval_seconds);
     let keep_alive_timeout = Duration::from_secs(config.keep_alive_timeout_seconds);
@@ -292,6 +315,7 @@ pub(super) async fn serve_play(
                         connection
                             .write_frame(PING_PACKET_ID, &encode_ping_payload(id))
                             .await?;
+                        connection.flush().await?;
                         trace!(%username, id, "ping answered");
                     }
                     CHAT_MESSAGE_PACKET_ID => {
@@ -304,6 +328,7 @@ pub(super) async fn serve_play(
                                 &encode_system_chat_message_payload(&echo, false)?,
                             )
                             .await?;
+                        connection.flush().await?;
                     }
                     CLIENT_INFORMATION_PACKET_ID => {
                         decode_client_information(&frame)?;
@@ -320,13 +345,21 @@ pub(super) async fn serve_play(
                     CLIENT_TICK_END_PACKET_ID => {
                         decode_client_tick_end(&frame.payload)?;
                     }
-                    MOVE_PLAYER_POS_PACKET_ID
-                    | MOVE_PLAYER_POS_ROT_PACKET_ID
-                    | MOVE_PLAYER_ROT_PACKET_ID
+                    MOVE_PLAYER_POS_PACKET_ID => {
+                        let mov = decode_move_player_pos(&frame.payload)?;
+                        let update = chunk_view.on_position(mov.x, mov.z)?;
+                        apply_view_update(connection, &mut chunk_view, update).await?;
+                    }
+                    MOVE_PLAYER_POS_ROT_PACKET_ID => {
+                        let mov = decode_move_player_pos_rot(&frame.payload)?;
+                        let update = chunk_view.on_position(mov.x, mov.z)?;
+                        apply_view_update(connection, &mut chunk_view, update).await?;
+                    }
+                    MOVE_PLAYER_ROT_PACKET_ID
                     | PLAYER_COMMAND_PACKET_ID
                     | PLAYER_INPUT_PACKET_ID
                     | CHAT_SESSION_UPDATE_PACKET_ID => {
-                        // Movement and chat sessions are ignored for now.
+                        // Look direction / inputs: no world side-effects yet.
                     }
                     other @ 0..=MAX_SERVERBOUND_PLAY_PACKET_ID => {
                         // A legitimate vanilla packet we do not implement yet
@@ -349,6 +382,7 @@ pub(super) async fn serve_play(
                             &encode_disconnect_payload("Timed out")?,
                         )
                         .await?;
+                    connection.flush().await?;
                     return Ok(());
                 }
                 next_keep_alive_id += 1;
@@ -356,6 +390,9 @@ pub(super) async fn serve_play(
                 connection
                     .write_frame(KEEP_ALIVE_PACKET_ID, &encode_keep_alive_payload(id))
                     .await?;
+                connection.flush().await?;
+                // Opportunistic disk drain while idle enough to send keep-alives.
+                let _ = chunk_view.flush_dirty_budget(32);
                 // The timeout clock starts with the first unanswered
                 // keep-alive and is only reset by a response, so a client
                 // that stops answering is kicked regardless of the probes
@@ -370,55 +407,63 @@ pub(super) async fn serve_play(
     }
 }
 
-/// Builds `level_chunk_with_light` payloads for every chunk in a square of
-/// half-side `view_distance` around (0, 0).
-///
-/// When `world_dir` is set, each column is loaded from Anvil or generated as a
-/// flat stone platform (not always written back — only bootstrap ensures 0,0).
-/// When empty (unit tests), a single void chunk is returned.
-///
-/// Returns `(payloads, feet_y)`.
-fn spawn_chunk_payloads(
-    config: &ServerConfig,
-    view_distance: i32,
-) -> Result<(Vec<Vec<u8>>, i32), ConnectionError> {
-    if config.world_dir.as_os_str().is_empty() {
-        let payload = encode_empty_chunk_payload(0, 0, SECTION_COUNT, true, PLAINS_BIOME_ID)?;
-        return Ok((vec![payload], config.spawn_y));
+/// Applies a [`ViewUpdate`]: center packet, unload far columns, batch-send new ones.
+async fn apply_view_update(
+    connection: &mut Connection,
+    view: &mut ChunkView,
+    update: ViewUpdate,
+) -> Result<(), ConnectionError> {
+    if update.new_center.is_none() && update.to_send.is_empty() && update.to_unload.is_empty() {
+        return Ok(());
     }
 
-    let ground_y = snap_ground_y(config.spawn_y.saturating_sub(1));
-    let radius = view_distance.max(1);
-    // Cap the first-join batch so a huge view-distance does not stall the
-    // accept loop (vd=8 → 17² = 289 chunks ≈ 15 MB of light-heavy payloads).
-    let radius = radius.min(8);
-    let mut payloads = Vec::with_capacity(((2 * radius + 1) as usize).pow(2));
-    let mut feet_y = ground_y + 1;
+    if let Some((cx, cz)) = update.new_center {
+        connection
+            .write_frame(
+                SET_CHUNK_CACHE_CENTER_PACKET_ID,
+                &encode_set_chunk_cache_center_payload(cx, cz),
+            )
+            .await?;
+        trace!(cx, cz, loaded = view.loaded_count(), "chunk cache center");
+    }
 
-    for chunk_z in -radius..=radius {
-        for chunk_x in -radius..=radius {
-            let column = match load_or_flat(&config.world_dir, chunk_x, chunk_z, ground_y) {
-                Ok(col) => col,
-                Err(error) => {
-                    warn!(
-                        world = %config.world_dir.display(),
-                        chunk_x,
-                        chunk_z,
-                        %error,
-                        "chunk load failed; using in-memory flat column"
-                    );
-                    ChunkColumn::flat(chunk_x, chunk_z, ground_y)
-                }
-            };
-            if chunk_x == 0 && chunk_z == 0 {
-                feet_y = column.surface_y;
-            }
-            let payload = column
-                .encode_network_payload(true)
-                .map_err(ConnectionError::from)?;
-            payloads.push(payload);
+    for (chunk_x, chunk_z) in update.to_unload {
+        connection
+            .write_frame(
+                UNLOAD_CHUNK_PACKET_ID,
+                &encode_unload_chunk_payload(chunk_x, chunk_z),
+            )
+            .await?;
+    }
+
+    if !update.to_send.is_empty() {
+        let batch_size = update.to_send.len() as i32;
+        connection
+            .write_frame(
+                CHUNK_BATCH_START_PACKET_ID,
+                &encode_chunk_batch_start_payload(),
+            )
+            .await?;
+        for (chunk_x, chunk_z) in &update.to_send {
+            let payload = view
+                .payload(*chunk_x, *chunk_z)
+                .expect("streaming view has network cache");
+            connection
+                .write_frame(LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, &payload)
+                .await?;
         }
+        connection
+            .write_frame(
+                CHUNK_BATCH_FINISHED_PACKET_ID,
+                &encode_chunk_batch_finished_payload(batch_size),
+            )
+            .await?;
+        // One flush per movement strip — not per chunk.
+        connection.flush().await?;
+        // Drain a few dirty columns without blocking exploration.
+        let _ = view.flush_dirty_budget(8);
+        trace!(sent = batch_size, "streamed new chunks");
     }
 
-    Ok((payloads, feet_y))
+    Ok(())
 }

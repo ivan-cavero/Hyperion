@@ -140,6 +140,10 @@ impl Connection {
     }
 
     /// Writes a packet (ID + payload) applying compression and encryption.
+    ///
+    /// **Does not flush** the TCP stream. Batch many writes (chunk batches,
+    /// registry dumps) and call [`Self::flush`] once — flushing per packet is
+    /// a major latency killer vs vanilla/Paper (they coalesce syscalls).
     pub(crate) async fn write_frame(
         &mut self,
         packet_id: i32,
@@ -168,10 +172,13 @@ impl Connection {
             .write_all(&frame)
             .await
             .map_err(map_peer_closed)?;
-        // Flush so the client sees each configuration step promptly (login,
-        // known packs, finish, …) instead of waiting for a large later write.
-        self.stream.flush().await.map_err(map_peer_closed)?;
         Ok(())
+    }
+
+    /// Forces buffered bytes to the client. Use after a logical step that the
+    /// client must see before we wait on its reply (or after a chunk batch).
+    pub(crate) async fn flush(&mut self) -> Result<(), ConnectionError> {
+        self.stream.flush().await.map_err(map_peer_closed)
     }
 
     /// Reads bytes from the socket, decrypts if needed, and appends to the buffer.

@@ -7,6 +7,46 @@
 
 ---
 
+## Where we are (snapshot · 2026-08-04)
+
+**Current phase**: **Phase 2** (world + performance foundation) · Phase 0–1 **done**.
+
+A vanilla **26.2** client can join offline/online, land on a **flat stone platform**,
+fly with **chunk streaming** (load/unload by view distance), see brand **Hyperion**
+in F3, and use **real creative** mode. CI green (test, clippy, fmt, audit, deny, fuzz).
+
+| Layer | Status | Notes |
+|-------|--------|--------|
+| Network / protocol 776 | ✅ | Handshake→Status/Login→Config→Play; fuzz; E2E |
+| Auth | ✅ | Offline + online (Mojang); AES/CFB8; compression |
+| World disk | ✅ | `server.properties`, `level.dat`, Anvil `.mca` (append path) |
+| Chunks in Play | ✅ | Flat single-value sections; view-distance stream |
+| Performance path | ✅ baseline | No per-packet flush; flat network template; lazy disk |
+| Worldgen 1:1 | ⬜ | ADR 0001 still open |
+| Simulation / plugins | ⬜ | Stub crates only |
+
+**Product bar (unchanged)**: vanilla **1:1 behaviour** where we claim parity, with a
+server path **much faster than Paper** (RAM, disk, login, serve). Flat world is not
+full parity yet — it is the scaffold to prove the engine before real worldgen.
+
+### What we shipped recently (2.0 → 2.2 + perf)
+
+1. **2.0** — Data dir bootstrap, storage NBT, minimal `level.dat`
+2. **Anvil region I/O** — `.mca` read/write with size caps (later: append, not full rewrite)
+3. **2.1** — Chunk column NBT, flat platform, Play serves real chunks, creative + brand
+4. **2.2** — `ChunkView` streaming on move, unload, cache center, dirty Anvil persist
+5. **Perf pass** — TCP batch flush, `FlatNetworkCache`, lazy disk budget, zlib fast
+
+### Honest gaps (next work)
+
+- Multi-palette sections / non-flat terrain  
+- ADR 0001 worldgen decision + noise/surface  
+- Async workers (gen/load/save) like Paper  
+- Packet codegen + full block-state registry  
+- Light engine (not only full-bright sky mask)
+
+---
+
 ## Product vision (north star)
 
 > A native Rust Minecraft server that the ecosystem **chooses for performance and security**:
@@ -34,7 +74,7 @@ Prepare the ground: decisions, toolchain, CI, workspace skeleton.
 
 ---
 
-## PHASE 1 — Network and protocol (month 1–4) · 🔄
+## PHASE 1 — Network and protocol (month 1–4) · ✅ (completed 2026-08)
 
 The heart of the project: speak the Minecraft protocol securely.
 
@@ -42,49 +82,71 @@ The heart of the project: speak the Minecraft protocol securely.
 - [x] **Live TCP server + status**: tokio listener on 25565, Handshake→Status state machine; a vanilla 26.x client sees the server list and ping responds
 - [x] **Full login**: RSA-1024 handshake, AES/CFB8, zlib compression — offline AND online-mode (Mojang auth) working with tests
 - [x] **Configuration**: correct vanilla flow (Feature Flags → Known Packs → Registry Data without NBT via `minecraft:core` → Update Tags → Code of Conduct → Finish) with listings generated from the 26.2 jar
-- [x] **Play**: basic packets (login (play), keep-alive with timeout kick, chat with echo, ping answer, position, spawn with empty chunk with light) — join to empty world on protocol 776 / 26.2, E2E-tested offline/online through spawn and verified with a real vanilla client
-- [ ] **Generated packet codec** by codegen from extracted JSON (registries + protocol)
-- [x] **Own NBT** (network-NBT reader/writer + fuzz; **storage NBT** named-root encode/decode for `level.dat` / Anvil — done; full Anvil chunk payload still Phase 2)
+- [x] **Play**: login (play), keep-alive with timeout kick, chat echo, ping answer, position, spawn — verified with a real vanilla 26.2 client (now lands on flat platform, not only void)
+- [ ] **Generated packet codec** by codegen from extracted JSON (registries + protocol) — still open; codecs are hand-written for 776
+- [x] **Own NBT** (network + storage named-root; fuzz; used for `level.dat` and Anvil)
 - [x] **Fuzzing**: `cargo-fuzz` frame/handshake/status/login/configuration/play/nbt smoke in CI
-- [x] **Unit tests** for frame/handshake/status/login/config/play codecs + E2E offline/online through spawn
+- [x] **Unit + E2E tests** offline/online through spawn
 - [ ] `tools/packet_inspector` tool to debug real traffic against a vanilla client
 
-**Exit criterion**: a vanilla 26.x client joins the server, sees the empty world, chats and moves, with fuzzing green in CI. ✅ (join/chat/moves verified E2E and with a real client; fuzz smoke green for the existing targets)
+**Exit criterion**: a vanilla 26.x client joins, sees a world, chats and moves, fuzzing green in CI. ✅
 
 ---
 
 ## PHASE 2 — World and 1:1 worldgen (month 4–8) · 🔄
 
-The "same seed, same world" promise is delivered here.
+The "same seed, same world" promise is delivered here. **Scaffold done; 1:1 gen not yet.**
 
-### Foundation in progress (bootstrap / storage NBT — partial only)
+### Phase 2.0 — data directory + storage NBT · ✅
 
-- [x] **Server data directory bootstrap**: first-start vanilla-shaped layout via `hyperion_world::prepare_data_directory` — `level-name` / `level-seed` from `server.properties` → `<level-name>/level.dat`, `session.lock`, and empty `ops.json` / `whitelist.json` / `banned-players.json` / `banned-ips.json`; idempotent (does not overwrite existing `level.dat`); wired from `hyperion-server` before `serve`
-- [x] **Minimal `level.dat` (gzip storage NBT)**: write/read named-root compound with `Data.LevelName`, `SpawnX/Y/Z`, `DataVersion`, legacy `RandomSeed`, and `WorldGenSettings.seed` — *minimal subset only; not full vanilla level.dat*
-- [x] **Storage NBT API**: `encode_named_tag` / `decode_named_tag` in `hyperion_protocol` (distinct from network NBT) + gzip helpers in `hyperion_world`
+- [x] **Server data directory bootstrap**: vanilla-shaped layout (`level.dat`, `session.lock`, list JSONs, `region/`)
+- [x] **Minimal `level.dat`** (gzip storage NBT): `LevelName`, spawn, seed, `DataVersion`
+- [x] **Storage NBT API**: `encode_named_tag` / `decode_named_tag` + gzip helpers
 
 ### Phase 2.1 — chunk schema + serve from Anvil · ✅
 
 - [x] **Chunk column model**: single-valued sections (block + biome), storage NBT encode/decode
-- [x] **Flat spawn chunk**: bedrock floor + stone up to section-aligned ground, air above; written to `region/r.0.0.mca` on bootstrap
-- [x] **Play serves Anvil**: `level_chunk_with_light` built from the loaded column (void fallback when `world_dir` empty for tests)
-- [x] **Network heightmaps**: packed 9-bit surface values for WORLD_SURFACE + MOTION_BLOCKING
-- [x] **Provisional block-state ids**: air/stone/bedrock constants (replace with codegen later)
+- [x] **Flat spawn**: stone platform (section-aligned ground), air above
+- [x] **Play serves real columns** via `level_chunk_with_light` (void fallback when `world_dir` empty for tests)
+- [x] **Network heightmaps**: packed 9-bit WORLD_SURFACE + MOTION_BLOCKING
+- [x] **Join polish**: full creative abilities (`0x0F`), `minecraft:brand` = Hyperion, view-distance batch at spawn
+- [x] **E2E**: `play_world_spawn` asserts brand + N chunks for view distance
+
+### Phase 2.2 — chunk streaming + Anvil · ✅
+
+- [x] **ChunkView**: per-connection loaded set + center; stream on chunk-border move
+- [x] **Unload** far columns (`unload_chunk`, Z-then-X wire order for 26.2)
+- [x] **Set cache center** when the player crosses borders
+- [x] **Anvil append path**: in-place or append sectors (no full-file rewrite / no hot-path `fsync`)
+- [x] **Dirty set + lazy persist**: disk work budgeted after spawn / on keep-alive / after stream strips
+- [x] **FlatNetworkCache**: one template per connection; send = clone + patch x/z only
+
+### Phase 2.2b — performance baseline (login / serve / RAM / disk) · ✅
+
+Aligned with how vanilla/Paper actually win (batch I/O, never block the join path on full region rewrite):
+
+- [x] **TCP**: `write_frame` does **not** flush every packet; explicit `flush()` after logical steps / chunk batches
+- [x] **RAM**: spawn does **not** allocate a Vec of all chunk payloads (stream encode→write)
+- [x] **CPU**: zlib `Compression::fast` for network + Anvil; static full-bright light array
+- [x] **Disk**: append Anvil; dirty budget; regression test “many writes stay linear”
+- [x] **Tests**: view geometry, template patch, persist, join E2E still green
+
+**Next perf (not done yet)**: async worker pool (gen/load/save), process-wide column cache, pre-encoded Configuration payloads, real light engine.
 
 ### Remaining Phase 2 work
 
-- [ ] **Data extraction pipeline**: Fabric mod or Mojang data generators → versioned JSON (registries, biomes, items, protocol) — *partial: `tools/mc-ref` already generates 26.2 reports + join data; the generic versioned pipeline is pending*
-- [ ] **Codegen**: `build.rs` generates Rust from the JSON (structs, coders, registries) — includes full block-state id map
-- [x] **Chunks (region I/O)**: Anvil **region** I/O (`.mca` read/write, zlib/gzip, size caps)
-- [x] **Chunks (schema + Play)**: single-valued section NBT + flat platform served in Play — *multi-palette sections still pending*
-- [ ] **Worldgen**: noise (simplex/octaves), biomes, surface, caves, ores, trees — goal block-by-block parity
-- [ ] **Structures**: stronghold, villages, bastions… (WIP phase — declare honest parity level)
-- [ ] **Own format** "Hyperion chunk format" (HCF) for ultra-fast multi-threaded load/save
-- [ ] **Light**: multi-threaded light calculation (sky/block) — *full-bright sky mask only for now*
-- [ ] **Differential testing**: compare generated chunks against vanilla (same seed) in CI
-- [ ] Decision: inherited vs own worldgen (close the open Phase 0 item)
+- [ ] **Data extraction pipeline**: generic versioned JSON pipeline (*partial: `tools/mc-ref` for 26.2 join data*)
+- [ ] **Codegen**: `build.rs` → structs/coders/registries + full block-state id map
+- [x] **Chunks (region I/O + stream)**: Anvil + Play streaming (flat)
+- [ ] **Multi-palette sections** / arbitrary block placement in a section
+- [ ] **Worldgen**: noise, biomes, surface, caves, ores, trees — block-by-block parity goal
+- [ ] **Structures**: stronghold, villages, bastions… (phased parity)
+- [ ] **HCF** (Hyperion Chunk Format) for ultra-fast multi-threaded load/save
+- [ ] **Light**: multi-threaded sky/block (today: full-bright sky mask only)
+- [ ] **Differential testing**: same seed vs vanilla in CI
+- [ ] **ADR 0001**: own vs cubiomes vs Pumpkin (GPL) — still **Proposed**
 
-**Exit criterion**: same seed → same chunk in Hyperion and vanilla (diff test suite), existing Anvil worlds loadable.
+**Exit criterion**: same seed → same chunk in Hyperion and vanilla (diff suite), existing Anvil worlds loadable. 🔄 (Anvil load/save path exists; parity gen does not)
 
 ---
 

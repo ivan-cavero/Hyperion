@@ -31,7 +31,10 @@ const MAX_VARINT_BYTES: usize = 5;
 /// uncompressed length followed by the zlib bytes.
 pub fn compress_body(packet_body: &[u8], threshold: usize) -> Result<Vec<u8>, ProtocolError> {
     if packet_body.len() >= threshold {
-        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        // Fast zlib: chunk packets are ~50 KiB of highly compressible light;
+        // default level 6 burned more CPU than the wire savings on local links.
+        // Paper also prefers speed on the network path.
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
         encoder
             .write_all(packet_body)
             .map_err(|error| ProtocolError::Compression(error.to_string()))?;

@@ -1,7 +1,7 @@
 # ⚡ Hyperion
 
 > **Native Rust** Minecraft server: secure, multi-core, unstoppable.
-> *Status: pre-alpha / active planning — see [ROADMAP.md](ROADMAP.md)*
+> *Status: pre-alpha — Phase 2 (flat world + stream); see [ROADMAP.md](ROADMAP.md)*
 
 ---
 

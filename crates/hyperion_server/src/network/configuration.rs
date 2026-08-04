@@ -74,6 +74,8 @@ pub(super) async fn serve_configuration(
             &encode_select_known_packs_payload(&offered)?,
         )
         .await?;
+    // Client must see feature flags + known packs before we wait on its reply.
+    connection.flush().await?;
     debug!(namespace = ns, id, version, "offered known packs");
 
     let client_packs = drain_until_known_packs(connection).await?;
@@ -139,6 +141,7 @@ pub(super) async fn serve_configuration(
             &encode_code_of_conduct_payload(CODE_OF_CONDUCT_TEXT)?,
         )
         .await?;
+    connection.flush().await?;
     drain_until_code_of_conduct(connection).await?;
     trace!("code of conduct accepted");
 
@@ -149,6 +152,7 @@ pub(super) async fn serve_configuration(
             &encode_finish_configuration_payload(),
         )
         .await?;
+    connection.flush().await?;
     let response = connection.read_frame().await?;
     decode_finish_configuration_ack(&response)?;
     info!("configuration finished");

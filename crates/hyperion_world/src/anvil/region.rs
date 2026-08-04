@@ -1,6 +1,6 @@
 //! Anvil `.mca` region file read/write with hard size bounds.
 
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -182,8 +182,17 @@ impl RegionFile {
 
     /// Compresses (zlib) and writes the chunk at global coordinates.
     ///
-    /// `nbt_bytes` must be uncompressed storage NBT. Rewrites the region file
-    /// in a single pass so free-sector bookkeeping stays simple and correct.
+    /// **Vanilla-style append path** (not a full-file rewrite):
+    /// - If the existing sector allocation is large enough, overwrite in place.
+    /// - Otherwise append at the end of the file and update the location table.
+    /// - No `fsync` on the hot path (Paper/vanilla also batch fsyncs).
+    ///
+    /// The previous implementation rewrote the whole region for every chunk
+    /// (`O(n²)` when filling a region) and called `sync_all`, which made flat
+    /// streaming slower than vanilla. Do not reintroduce that without a
+    /// compaction job.
+    ///
+    /// `nbt_bytes` must be uncompressed storage NBT.
     pub fn write_chunk(
         &self,
         chunk_x: i32,
@@ -200,13 +209,73 @@ impl RegionFile {
         self.ensure_region_coords(rx, rz)?;
         let target_index = chunk_index(chunk_x, chunk_z);
 
-        // Load all present chunks (except the one we replace).
-        let mut chunks = self.load_all_chunks(rx, rz)?;
-        chunks[target_index] = Some(nbt_bytes.to_vec());
-        self.rewrite_all(&chunks)
+        let compressed = compress_chunk_zlib(nbt_bytes)?;
+        let length = (compressed.len() + 1) as u32; // includes compression byte
+        let entry_body_len = 4 + 1 + compressed.len();
+        let sectors_needed = entry_body_len.div_ceil(SECTOR_SIZE);
+        if sectors_needed > 255 {
+            return Err(WorldError::InvalidRegion(format!(
+                "chunk needs {sectors_needed} sectors (max 255)"
+            )));
+        }
+
+        let mut entry = Vec::with_capacity(sectors_needed * SECTOR_SIZE);
+        entry.extend_from_slice(&length.to_be_bytes());
+        entry.push(COMPRESSION_ZLIB);
+        entry.extend_from_slice(&compressed);
+        entry.resize(sectors_needed * SECTOR_SIZE, 0);
+
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&self.path)
+            .map_err(|source| WorldError::io(&self.path, source))?;
+
+        let (old_offset, old_sectors) = self.read_location(target_index)?;
+        let write_sector = if old_offset != 0 && old_sectors as usize >= sectors_needed {
+            old_offset
+        } else {
+            // Append past the last used sector (file length rounded up).
+            let file_len = file
+                .metadata()
+                .map_err(|source| WorldError::io(&self.path, source))?
+                .len();
+            let end = file_len.max(HEADER_BYTES as u64);
+            end.div_ceil(SECTOR_SIZE as u64) as u32
+        };
+
+        file.seek(SeekFrom::Start(
+            u64::from(write_sector) * SECTOR_SIZE as u64,
+        ))
+        .map_err(|source| WorldError::io(&self.path, source))?;
+        file.write_all(&entry)
+            .map_err(|source| WorldError::io(&self.path, source))?;
+
+        // Update location + timestamp tables in the header (4 bytes each).
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as u32)
+            .unwrap_or(0);
+        let mut loc = [0_u8; 4];
+        loc[0] = (write_sector >> 16) as u8;
+        loc[1] = (write_sector >> 8) as u8;
+        loc[2] = write_sector as u8;
+        loc[3] = sectors_needed as u8;
+        file.seek(SeekFrom::Start((target_index * 4) as u64))
+            .map_err(|source| WorldError::io(&self.path, source))?;
+        file.write_all(&loc)
+            .map_err(|source| WorldError::io(&self.path, source))?;
+        file.seek(SeekFrom::Start((SECTOR_SIZE + target_index * 4) as u64))
+            .map_err(|source| WorldError::io(&self.path, source))?;
+        file.write_all(&now.to_be_bytes())
+            .map_err(|source| WorldError::io(&self.path, source))?;
+        Ok(())
     }
 
-    /// Removes a chunk slot (idempotent).
+    /// Removes a chunk slot (idempotent) by clearing its location entry.
+    ///
+    /// Does **not** reclaim file space (same as vanilla until a compaction);
+    /// that keeps delete on the fast path.
     pub fn delete_chunk(&self, chunk_x: i32, chunk_z: i32) -> Result<(), WorldError> {
         let (rx, rz) = chunk_to_region(chunk_x, chunk_z);
         self.ensure_region_coords(rx, rz)?;
@@ -214,83 +283,15 @@ impl RegionFile {
         if !self.has_chunk(chunk_x, chunk_z)? {
             return Ok(());
         }
-        let mut chunks = self.load_all_chunks(rx, rz)?;
-        chunks[target_index] = None;
-        self.rewrite_all(&chunks)
-    }
-
-    fn load_all_chunks(
-        &self,
-        region_x: i32,
-        region_z: i32,
-    ) -> Result<Vec<Option<Vec<u8>>>, WorldError> {
-        let mut chunks = Vec::with_capacity(CHUNKS_PER_REGION);
-        for index in 0..CHUNKS_PER_REGION {
-            let (ox, oz) = index_to_local(index);
-            let gx = region_x * CHUNKS_PER_REGION_EDGE + ox;
-            let gz = region_z * CHUNKS_PER_REGION_EDGE + oz;
-            chunks.push(self.read_chunk(gx, gz)?);
-        }
-        Ok(chunks)
-    }
-
-    fn rewrite_all(&self, chunks: &[Option<Vec<u8>>]) -> Result<(), WorldError> {
-        debug_assert_eq!(chunks.len(), CHUNKS_PER_REGION);
-
-        let mut locations = vec![0_u8; SECTOR_SIZE];
-        let mut timestamps = vec![0_u8; SECTOR_SIZE];
-        let mut payload = Vec::new();
-        let mut next_sector: u32 = 2; // first two sectors are header
-
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() as u32)
-            .unwrap_or(0);
-
-        for (index, chunk) in chunks.iter().enumerate() {
-            let Some(nbt) = chunk else {
-                continue;
-            };
-            let compressed = compress_chunk_zlib(nbt)?;
-            let length = (compressed.len() + 1) as u32; // + compression byte
-            let mut entry = Vec::with_capacity(4 + 1 + compressed.len());
-            entry.extend_from_slice(&length.to_be_bytes());
-            entry.push(COMPRESSION_ZLIB);
-            entry.extend_from_slice(&compressed);
-
-            let sectors_needed = entry.len().div_ceil(SECTOR_SIZE);
-            if sectors_needed > 255 {
-                return Err(WorldError::InvalidRegion(format!(
-                    "chunk needs {sectors_needed} sectors (max 255)"
-                )));
-            }
-            // Pad to whole sectors.
-            let padded_len = sectors_needed * SECTOR_SIZE;
-            entry.resize(padded_len, 0);
-
-            let offset = next_sector;
-            write_location_entry(&mut locations, index, offset, sectors_needed as u8);
-            write_timestamp(&mut timestamps, index, now);
-
-            payload.extend_from_slice(&entry);
-            next_sector += sectors_needed as u32;
-        }
-
-        // Atomic-ish replace: write temp then rename.
-        let tmp_path = self.path.with_extension("mca.tmp");
-        {
-            let mut file =
-                File::create(&tmp_path).map_err(|source| WorldError::io(&tmp_path, source))?;
-            file.write_all(&locations)
-                .map_err(|source| WorldError::io(&tmp_path, source))?;
-            file.write_all(&timestamps)
-                .map_err(|source| WorldError::io(&tmp_path, source))?;
-            file.write_all(&payload)
-                .map_err(|source| WorldError::io(&tmp_path, source))?;
-            file.sync_all()
-                .map_err(|source| WorldError::io(&tmp_path, source))?;
-        }
-        fs::rename(&tmp_path, &self.path).map_err(|source| WorldError::io(&self.path, source))?;
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&self.path)
+            .map_err(|source| WorldError::io(&self.path, source))?;
+        file.seek(SeekFrom::Start((target_index * 4) as u64))
+            .map_err(|source| WorldError::io(&self.path, source))?;
+        file.write_all(&[0, 0, 0, 0])
+            .map_err(|source| WorldError::io(&self.path, source))?;
         Ok(())
     }
 
@@ -321,28 +322,10 @@ impl RegionFile {
     }
 }
 
-fn index_to_local(index: usize) -> (i32, i32) {
-    let local_x = (index % CHUNKS_PER_REGION_EDGE as usize) as i32;
-    let local_z = (index / CHUNKS_PER_REGION_EDGE as usize) as i32;
-    (local_x, local_z)
-}
-
-fn write_location_entry(table: &mut [u8], index: usize, offset_sectors: u32, sector_count: u8) {
-    let base = index * 4;
-    table[base] = ((offset_sectors >> 16) & 0xff) as u8;
-    table[base + 1] = ((offset_sectors >> 8) & 0xff) as u8;
-    table[base + 2] = (offset_sectors & 0xff) as u8;
-    table[base + 3] = sector_count;
-}
-
-fn write_timestamp(table: &mut [u8], index: usize, timestamp: u32) {
-    let base = index * 4;
-    let bytes = timestamp.to_be_bytes();
-    table[base..base + 4].copy_from_slice(&bytes);
-}
-
 fn compress_chunk_zlib(uncompressed: &[u8]) -> Result<Vec<u8>, WorldError> {
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    // Fast compression on the hot path (Paper-style): disk size slightly
+    // larger, encode cost much lower than default zlib level 6.
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
     encoder
         .write_all(uncompressed)
         .map_err(|e| WorldError::Gzip(e.to_string()))?;
@@ -394,7 +377,7 @@ fn decompress_limited<R: Read>(mut decoder: R) -> Result<Vec<u8>, WorldError> {
 mod tests {
     use super::*;
     use hyperion_protocol::{NbtTag, decode_named_tag, encode_named_tag};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
     fn temp_region(label: &str) -> PathBuf {
         let nanos = SystemTime::now()
@@ -514,6 +497,32 @@ mod tests {
         let huge = vec![0_u8; MAX_CHUNK_UNCOMPRESSED + 1];
         let err = region.write_chunk(0, 0, &huge).expect_err("reject");
         assert!(matches!(err, WorldError::InvalidRegion(_)));
+        let _ = fs::remove_file(&path);
+    }
+
+    /// Regression: filling many slots must stay linear (append), not O(n²)
+    /// full-file rewrites. 200 chunks in well under a second on a normal disk.
+    #[test]
+    fn writing_many_chunks_stays_fast() {
+        let path = temp_region("perf");
+        let _ = fs::remove_file(&path);
+        let region = RegionFile::create_empty(&path).expect("create");
+        let nbt = sample_nbt("perf");
+        let start = Instant::now();
+        for i in 0..200 {
+            let x = i % 32;
+            let z = i / 32;
+            region.write_chunk(x, z, &nbt).expect("write");
+        }
+        let elapsed = start.elapsed();
+        // CI/debug can be slow; full rewrite of a region 200× was multi-minute.
+        // Append path must stay under a few seconds even on cold disks.
+        assert!(
+            elapsed.as_secs() < 10,
+            "200 append writes took {elapsed:?} (expected <10s); region rewrite regress?"
+        );
+        assert!(region.has_chunk(0, 0).unwrap());
+        assert!(region.has_chunk(31, 5).unwrap());
         let _ = fs::remove_file(&path);
     }
 }

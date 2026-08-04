@@ -6,6 +6,7 @@
 //! shared-secret exchange via RSA, AES/CFB8 activation, and Mojang
 //! session-server verification.
 
+pub(crate) mod chunk_view;
 pub(crate) mod configuration;
 pub(crate) mod connection;
 mod join_data;

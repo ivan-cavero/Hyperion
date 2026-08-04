@@ -55,6 +55,7 @@ pub(super) async fn serve_login(
                     &encode_login_disconnect_payload("Invalid characters in username")?,
                 )
                 .await?;
+            connection.flush().await?;
             return Err(ConnectionError::Protocol(ProtocolError::InvalidUsername));
         }
         Err(error) => return Err(ConnectionError::Protocol(error)),
@@ -116,6 +117,7 @@ async fn serve_login_offline(
     connection
         .write_frame(LOGIN_SUCCESS_PACKET_ID, &success_payload)
         .await?;
+    connection.flush().await?;
 
     // Login Acknowledged: the client transitions to Configuration.
     let acknowledged_frame = connection.read_frame_timeout(LOGIN_READ_TIMEOUT).await?;
@@ -170,6 +172,7 @@ async fn serve_login_online(
     connection
         .write_frame(ENCRYPTION_REQUEST_PACKET_ID, &encryption_request_payload)
         .await?;
+    connection.flush().await?;
     trace!(
         username = %username,
         verify_token = ?verify_token,
@@ -244,6 +247,7 @@ async fn serve_login_online(
                     &encode_login_disconnect_payload(reason)?,
                 )
                 .await?;
+            connection.flush().await?;
             return Err(ConnectionError::Auth(reason.to_owned()));
         }
     };
@@ -272,6 +276,7 @@ async fn serve_login_online(
     connection
         .write_frame(LOGIN_SUCCESS_PACKET_ID, &success_payload)
         .await?;
+    connection.flush().await?;
 
     // Step 10: Login Acknowledged (encrypted from the client).
     let acknowledged_frame = connection.read_frame_timeout(LOGIN_READ_TIMEOUT).await?;
