@@ -466,6 +466,7 @@ impl ByteWriter {
         self.buffer.extend_from_slice(&value.to_be_bytes());
     }
 
+    #[allow(dead_code)] // general-purpose ByteWriter utility
     pub(crate) fn push_u32(&mut self, value: u32) {
         self.buffer.extend_from_slice(&value.to_be_bytes());
     }

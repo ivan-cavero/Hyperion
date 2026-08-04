@@ -43,4 +43,7 @@ pub enum ProtocolError {
     /// Decompressing a compressed packet failed.
     #[error("could not decompress packet: {0}")]
     Compression(String),
+    /// An NBT tag exceeded the maximum nesting depth.
+    #[error("NBT nesting depth exceeds maximum")]
+    NbtDepthExceeded,
 }

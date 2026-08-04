@@ -77,7 +77,7 @@ cargo llvm-cov --workspace
 ## Fuzzing
 
 Mandatory for every parser that receives network bytes. Current targets:
-`frame`, `handshake`, `status`, `login`.
+`frame`, `handshake`, `status`, `login`, `configuration`, `play`, `nbt`.
 
 ```sh
 cd crates/hyperion_protocol/fuzz

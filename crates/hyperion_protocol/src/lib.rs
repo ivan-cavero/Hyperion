@@ -53,7 +53,7 @@ pub use login::{
     encode_login_disconnect_payload, encode_login_success, encode_login_success_payload,
     encode_set_compression, offline_mode_uuid,
 };
-pub use nbt::{NbtTag, encode_compound_tag, encode_string_tag};
+pub use nbt::{NbtReader, NbtTag, decode_compound_tag, encode_compound_tag, encode_string_tag};
 pub use play::{
     CHAT_MESSAGE_PACKET_ID, CHAT_SESSION_UPDATE_PACKET_ID, CHUNK_BATCH_FINISHED_PACKET_ID,
     CHUNK_BATCH_RECEIVED_PACKET_ID, CHUNK_BATCH_START_PACKET_ID, CLIENT_INFORMATION_PACKET_ID,

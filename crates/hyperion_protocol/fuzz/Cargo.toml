@@ -56,3 +56,10 @@ path = "fuzz_targets/play.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "nbt"
+path = "fuzz_targets/nbt.rs"
+test = false
+doc = false
+bench = false

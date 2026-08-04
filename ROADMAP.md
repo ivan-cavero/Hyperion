@@ -44,8 +44,8 @@ The heart of the project: speak the Minecraft protocol securely.
 - [x] **Configuration**: correct vanilla flow (Feature Flags → Known Packs → Registry Data without NBT via `minecraft:core` → Update Tags → Code of Conduct → Finish) with listings generated from the 26.2 jar
 - [x] **Play**: basic packets (login (play), keep-alive with timeout kick, chat with echo, ping answer, position, spawn with empty chunk with light) — join to empty world on protocol 776 / 26.2, E2E-tested offline/online through spawn and verified with a real vanilla client
 - [ ] **Generated packet codec** by codegen from extracted JSON (registries + protocol)
-- [🔄] **Own NBT** (network-NBT writing done and verified against real captures; reader and streaming pending)
-- [🔄] **Fuzzing**: `cargo-fuzz` frame/handshake/status/login in CI — config/play targets pending
+- [🔄] **Own NBT** (network-NBT reader/writer + fuzz done; storage format pending Phase 2)
+- [x] **Fuzzing**: `cargo-fuzz` frame/handshake/status/login/configuration/play/nbt smoke in CI
 - [x] **Unit tests** for frame/handshake/status/login/config/play codecs + E2E offline/online through spawn
 - [ ] `tools/packet_inspector` tool to debug real traffic against a vanilla client
 
