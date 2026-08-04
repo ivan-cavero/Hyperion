@@ -217,6 +217,11 @@ impl<'input> PacketCursor<'input> {
         Self { input, offset: 0 }
     }
 
+    /// Bytes not yet consumed by the cursor.
+    pub(crate) fn remaining(&self) -> usize {
+        self.input.len().saturating_sub(self.offset)
+    }
+
     pub(crate) fn read_var_i32(&mut self) -> Result<i32, ProtocolError> {
         let (value, next_offset) =
             decode_var_i32_at(self.input, self.offset, 0, 0, 0, MAX_GENERAL_VARINT_BYTES)?;

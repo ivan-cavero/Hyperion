@@ -109,9 +109,17 @@ pub struct TaggedRegistry {
 pub fn decode_known_packs(frame: &crate::PacketFrame) -> Result<Vec<KnownPack>, ProtocolError> {
     let mut cursor = PacketCursor::new(&frame.payload);
     let count = cursor.read_var_i32()?;
-    let mut packs = Vec::with_capacity(
-        usize::try_from(count).map_err(|_| ProtocolError::InvalidPacketPayload)?,
-    );
+    let count = usize::try_from(count).map_err(|_| ProtocolError::InvalidPacketPayload)?;
+    // Each pack is at least three empty length-prefixed strings (1 byte each).
+    // Reject before allocating so a hostile VarInt cannot OOM via `with_capacity`.
+    const MIN_PACK_BYTES: usize = 3;
+    if count
+        .checked_mul(MIN_PACK_BYTES)
+        .is_none_or(|needed| needed > cursor.remaining())
+    {
+        return Err(ProtocolError::InvalidPacketPayload);
+    }
+    let mut packs = Vec::with_capacity(count);
     for _ in 0..count {
         let namespace = cursor.read_string(MAX_KNOWN_PACK_STRING_UTF16_UNITS)?;
         let id = cursor.read_string(MAX_KNOWN_PACK_STRING_UTF16_UNITS)?;
@@ -290,6 +298,21 @@ mod tests {
             payload: Bytes::from(payload),
         };
         assert_eq!(decode_known_packs(&frame).unwrap(), packs);
+    }
+
+    #[test]
+    fn known_packs_rejects_huge_count_without_oom() {
+        // Regression: CI fuzz found OOM via `Vec::with_capacity` on a hostile
+        // VarInt count that exceeds the remaining payload
+        // (artifact oom-4b4eaadd… / input after frame split).
+        let frame = crate::PacketFrame {
+            packet_id: KNOWN_PACKS_PACKET_ID,
+            payload: Bytes::from(vec![0xfa, 0xff, 0xff, 0x7e, 0xff, 0xff, 0xff, 0xff, 0xff]),
+        };
+        assert_eq!(
+            decode_known_packs(&frame),
+            Err(ProtocolError::InvalidPacketPayload)
+        );
     }
 
     #[test]
