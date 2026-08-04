@@ -29,7 +29,7 @@ bytes = "1"                                           # buffers (Tokio team)
 flate2 = "1"                                          # zlib/deflate
 sha1 = "0.10"                                         # handshake (RustCrypto) — pinned by rsa 0.9
 sha2 = "0.10"                                         # (RustCrypto) — pinned by rsa 0.9
-aes = "0.8"                                           # encryption (RustCrypto)
+aes = "0.9"                                           # encryption (RustCrypto)
 rsa = "0.9"                                           # RSA handshake (RustCrypto) — awaiting 0.10 for rand 0.10 + sha1 0.11
 rand = "0.8"                                          # RNG — pinned by rsa 0.9 (awaits rsa 0.10 for rand 0.10)
 serde = { version = "1", features = ["derive"] }      # extracted data
