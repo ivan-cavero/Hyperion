@@ -28,6 +28,9 @@ pub enum WorldError {
     /// `level-name` is empty, contains path separators, or would escape the data root.
     #[error("invalid level-name: {0}")]
     InvalidLevelName(String),
+    /// Anvil region file is corrupt or a chunk payload is out of bounds.
+    #[error("invalid region: {0}")]
+    InvalidRegion(String),
 }
 
 impl WorldError {

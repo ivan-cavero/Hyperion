@@ -28,6 +28,8 @@ pub struct DataPaths {
     pub level_dat: PathBuf,
     /// Path to `session.lock` inside the world directory.
     pub session_lock: PathBuf,
+    /// Path to `region/` (Anvil `.mca` files) inside the world directory.
+    pub region_dir: PathBuf,
     /// Path to `ops.json` at the server root.
     pub ops: PathBuf,
     /// Path to `whitelist.json` at the server root.
@@ -112,6 +114,9 @@ pub fn prepare_data_directory(config: &BootstrapConfig) -> Result<DataPaths, Wor
             .map_err(|source| WorldError::io(&session_lock, source))?;
     }
 
+    let region_dir = world_dir.join("region");
+    fs::create_dir_all(&region_dir).map_err(|source| WorldError::io(&region_dir, source))?;
+
     let ops = root.join("ops.json");
     let whitelist = root.join("whitelist.json");
     let banned_players = root.join("banned-players.json");
@@ -126,6 +131,7 @@ pub fn prepare_data_directory(config: &BootstrapConfig) -> Result<DataPaths, Wor
         world_dir,
         level_dat,
         session_lock,
+        region_dir,
         ops,
         whitelist,
         banned_players,
@@ -218,6 +224,7 @@ mod tests {
         assert!(paths.world_dir.is_dir());
         assert!(paths.level_dat.is_file());
         assert!(paths.session_lock.is_file());
+        assert!(paths.region_dir.is_dir());
         assert!(!fs::read(&paths.session_lock).expect("lock").is_empty());
 
         for json_path in [

@@ -67,7 +67,7 @@ The "same seed, same world" promise is delivered here.
 
 - [ ] **Data extraction pipeline**: Fabric mod or Mojang data generators → versioned JSON (registries, biomes, items, protocol) — *partial: `tools/mc-ref` already generates 26.2 reports + join data; the generic versioned pipeline is pending*
 - [ ] **Codegen**: `build.rs` generates Rust from the JSON (structs, coders, registries)
-- [ ] **Chunks**: Anvil format (read/write, compat with existing worlds) — region files, chunk NBT, not just `level.dat`
+- [🔄] **Chunks**: Anvil **region** I/O (`.mca` read/write, zlib/gzip, size caps) done; full chunk NBT schema + serving in Play still pending
 - [ ] **Worldgen**: noise (simplex/octaves), biomes, surface, caves, ores, trees — goal block-by-block parity
 - [ ] **Structures**: stronghold, villages, bastions… (WIP phase — declare honest parity level)
 - [ ] **Own format** "Hyperion chunk format" (HCF) for ultra-fast multi-threaded load/save

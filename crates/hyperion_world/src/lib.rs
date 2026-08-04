@@ -6,13 +6,18 @@
 //! - `level-name` → world folder + NBT `LevelName`
 //! - `level-seed` → NBT `RandomSeed` / `WorldGenSettings.seed` (0 = random once)
 //!
-//! Chunks, worldgen, Anvil, and HCF land later.
+//! Anvil region I/O is available; full chunk schema / worldgen / HCF follow.
 
+mod anvil;
 mod bootstrap;
 mod error;
 mod gzip_util;
 mod level_dat;
 
+pub use anvil::{
+    COMPRESSION_GZIP, COMPRESSION_NONE, COMPRESSION_ZLIB, MAX_CHUNK_UNCOMPRESSED, RegionFile,
+    SECTOR_SIZE, chunk_index, chunk_to_region, region_file_name, region_path,
+};
 pub use bootstrap::{BootstrapConfig, DataPaths, prepare_data_directory};
 pub use error::WorldError;
 pub use gzip_util::{gzip_compress, gzip_decompress};
