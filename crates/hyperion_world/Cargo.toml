@@ -8,7 +8,9 @@ repository.workspace = true
 description = "Hyperion world: chunks, 1:1 worldgen, world formats"
 
 [dependencies]
-# Phase 2: will add whitelist deps (flate2, serde…) + optional FFI to cubiomes (MIT).
+hyperion_protocol = { path = "../hyperion_protocol" }
+flate2 = { workspace = true }
+thiserror = { workspace = true }
 
 [lints]
 workspace = true

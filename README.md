@@ -115,11 +115,13 @@ reads from that config — nothing operators can tune is hard-coded in the netwo
 | `max-players` | `20` | Advertised in the multiplayer list |
 | `max-connections` | `1024` | Concurrent TCP cap (backpressure) |
 | `motd` | `A Hyperion server` | Server list + tab list |
+| `level-name` | `world` | World folder under the server root; NBT `LevelName` |
+| `level-seed` | `0` | World seed; `0` = random once when creating `level.dat` |
 | `view-distance` | `8` | Client chunk render distance |
 | `simulation-distance` | `8` | Server-side simulation distance |
 | `network-compression-threshold` | `256` | Zlib threshold (`-1` disables) |
 | `session-server-url` | Mojang | Override for proxies / tests |
-| `spawn-y` | `100` | Temporary until worldgen |
+| `spawn-y` | `100` | Temporary `SpawnY` until worldgen |
 | `keep-alive-interval` / `keep-alive-timeout` | `10` / `30` | Seconds |
 
 CLI flags (`--online-mode`, `--offline-mode`, positional `host:port`) override the file after load.

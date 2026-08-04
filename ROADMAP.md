@@ -44,7 +44,7 @@ The heart of the project: speak the Minecraft protocol securely.
 - [x] **Configuration**: correct vanilla flow (Feature Flags → Known Packs → Registry Data without NBT via `minecraft:core` → Update Tags → Code of Conduct → Finish) with listings generated from the 26.2 jar
 - [x] **Play**: basic packets (login (play), keep-alive with timeout kick, chat with echo, ping answer, position, spawn with empty chunk with light) — join to empty world on protocol 776 / 26.2, E2E-tested offline/online through spawn and verified with a real vanilla client
 - [ ] **Generated packet codec** by codegen from extracted JSON (registries + protocol)
-- [🔄] **Own NBT** (network-NBT reader/writer + fuzz done; storage format pending Phase 2)
+- [x] **Own NBT** (network-NBT reader/writer + fuzz; **storage NBT** named-root encode/decode for `level.dat` / Anvil — done; full Anvil chunk payload still Phase 2)
 - [x] **Fuzzing**: `cargo-fuzz` frame/handshake/status/login/configuration/play/nbt smoke in CI
 - [x] **Unit tests** for frame/handshake/status/login/config/play codecs + E2E offline/online through spawn
 - [ ] `tools/packet_inspector` tool to debug real traffic against a vanilla client
@@ -53,13 +53,21 @@ The heart of the project: speak the Minecraft protocol securely.
 
 ---
 
-## PHASE 2 — World and 1:1 worldgen (month 4–8) · ⬜
+## PHASE 2 — World and 1:1 worldgen (month 4–8) · 🔄
 
 The "same seed, same world" promise is delivered here.
 
+### Foundation in progress (bootstrap / storage NBT — partial only)
+
+- [x] **Server data directory bootstrap**: first-start vanilla-shaped layout via `hyperion_world::prepare_data_directory` — `level-name` / `level-seed` from `server.properties` → `<level-name>/level.dat`, `session.lock`, and empty `ops.json` / `whitelist.json` / `banned-players.json` / `banned-ips.json`; idempotent (does not overwrite existing `level.dat`); wired from `hyperion-server` before `serve`
+- [x] **Minimal `level.dat` (gzip storage NBT)**: write/read named-root compound with `Data.LevelName`, `SpawnX/Y/Z`, `DataVersion`, legacy `RandomSeed`, and `WorldGenSettings.seed` — *minimal subset only; not full vanilla level.dat*
+- [x] **Storage NBT API**: `encode_named_tag` / `decode_named_tag` in `hyperion_protocol` (distinct from network NBT) + gzip helpers in `hyperion_world`
+
+### Remaining Phase 2 work
+
 - [ ] **Data extraction pipeline**: Fabric mod or Mojang data generators → versioned JSON (registries, biomes, items, protocol) — *partial: `tools/mc-ref` already generates 26.2 reports + join data; the generic versioned pipeline is pending*
 - [ ] **Codegen**: `build.rs` generates Rust from the JSON (structs, coders, registries)
-- [ ] **Chunks**: Anvil format (read/write, compat with existing worlds)
+- [ ] **Chunks**: Anvil format (read/write, compat with existing worlds) — region files, chunk NBT, not just `level.dat`
 - [ ] **Worldgen**: noise (simplex/octaves), biomes, surface, caves, ores, trees — goal block-by-block parity
 - [ ] **Structures**: stronghold, villages, bastions… (WIP phase — declare honest parity level)
 - [ ] **Own format** "Hyperion chunk format" (HCF) for ultra-fast multi-threaded load/save

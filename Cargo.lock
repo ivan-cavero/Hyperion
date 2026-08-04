@@ -502,6 +502,7 @@ dependencies = [
  "divan",
  "hyperion_core",
  "hyperion_protocol",
+ "hyperion_world",
  "rand 0.8.7",
  "reqwest",
  "rsa",
@@ -519,6 +520,11 @@ version = "0.1.0"
 [[package]]
 name = "hyperion_world"
 version = "0.1.0"
+dependencies = [
+ "flate2",
+ "hyperion_protocol",
+ "thiserror",
+]
 
 [[package]]
 name = "icu_collections"

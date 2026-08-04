@@ -1,10 +1,15 @@
-//! Network-NBT writer and streaming reader for protocol 776 (Minecraft 26.2).
+//! Network-NBT and storage-NBT writer and streaming reader for protocol 776
+//! (Minecraft 26.2).
 //!
-//! Since 1.20.2 the network NBT format is the standard NBT binary format
+//! Since 1.20.2 the **network** NBT format is the standard NBT binary format
 //! (big-endian numbers, unsigned-short length prefixes on strings) with one
 //! difference: the root tag carries **no name** (no `u16` length prefix).
 //! This matches the format vanilla exchanges for registry data and, since
 //! 1.20.5, for text components.
+//!
+//! **Storage** NBT (level.dat, Anvil region files) uses a **named** root:
+//! tag type byte + u16 BE UTF-8 name + payload. See [`encode_named_tag`] /
+//! [`decode_named_tag`].
 
 use crate::ProtocolError;
 use crate::frame::ByteWriter;
@@ -425,6 +430,27 @@ pub fn decode_compound_tag(input: &[u8]) -> Result<Vec<(String, NbtTag)>, Protoc
     reader.read_compound()
 }
 
+/// Encodes a root-level **named** tag (storage NBT format used by level.dat / Anvil).
+///
+/// Layout: tag type byte + u16 BE name (UTF-8 byte length) + payload (same
+/// payload rules as the network writer). For a compound root this is type
+/// `0x0a`, name, then named children + `TAG_END` (`0x00`) — no extra type
+/// byte beyond the root type.
+pub fn encode_named_tag(name: &str, tag: &NbtTag) -> Result<Vec<u8>, ProtocolError> {
+    let mut writer = ByteWriter::new();
+    write_named_tag(&mut writer, name, tag)?;
+    Ok(writer.into_bytes())
+}
+
+/// Decodes a root-level named tag (storage NBT format).
+///
+/// Inverse of [`encode_named_tag`]. Rejects EOF, unknown types, and nesting
+/// deeper than 128 via [`NbtReader`].
+pub fn decode_named_tag(input: &[u8]) -> Result<(String, NbtTag), ProtocolError> {
+    let mut reader = NbtReader::new(input);
+    reader.read_named_tag()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -801,5 +827,123 @@ mod tests {
             reader.read_tag_payload(0x0d),
             Err(ProtocolError::InvalidPacketPayload)
         );
+    }
+
+    // ------------------------------------------------------------------
+    // Storage NBT (named root)
+    // ------------------------------------------------------------------
+
+    fn named_round_trip(name: &str, tag: &NbtTag) {
+        let encoded = encode_named_tag(name, tag).unwrap();
+        let (decoded_name, decoded_tag) = decode_named_tag(&encoded).unwrap();
+        assert_eq!(decoded_name, name);
+        assert_eq!(&decoded_tag, tag);
+        let re_encoded = encode_named_tag(&decoded_name, &decoded_tag).unwrap();
+        assert_eq!(re_encoded, encoded);
+    }
+
+    #[test]
+    fn named_root_round_trip_mixed_types() {
+        let tag = NbtTag::Compound(vec![
+            ("byte".to_owned(), NbtTag::Byte(42)),
+            ("short".to_owned(), NbtTag::Short(-32000)),
+            ("int".to_owned(), NbtTag::Int(0x12345678)),
+            ("long".to_owned(), NbtTag::Long(0x123456789abcdef)),
+            ("float".to_owned(), NbtTag::Float(1.25)),
+            ("double".to_owned(), NbtTag::Double(-2.5)),
+            ("string".to_owned(), NbtTag::String("hello".to_owned())),
+            ("bytes".to_owned(), NbtTag::ByteArray(vec![0, 1, 255])),
+            ("ints".to_owned(), NbtTag::IntArray(vec![1, -2, 3])),
+            ("longs".to_owned(), NbtTag::LongArray(vec![4, -5, 6])),
+            (
+                "list".to_owned(),
+                NbtTag::List(vec![NbtTag::Short(1), NbtTag::Short(2)]),
+            ),
+        ]);
+        named_round_trip("Data", &tag);
+    }
+
+    #[test]
+    fn named_root_round_trip_empty_name() {
+        // Vanilla level.dat commonly uses an empty root name.
+        let tag = NbtTag::Compound(vec![
+            ("version".to_owned(), NbtTag::Int(19133)),
+            ("LevelName".to_owned(), NbtTag::String("world".to_owned())),
+        ]);
+        named_round_trip("", &tag);
+
+        // Explicit byte layout: type + name length 0 + children + end.
+        let encoded = encode_named_tag("", &tag).unwrap();
+        assert_eq!(encoded[0], TAG_COMPOUND);
+        assert_eq!(&encoded[1..3], &[0x00, 0x00]);
+    }
+
+    #[test]
+    fn named_root_round_trip_nested_compound() {
+        let tag = NbtTag::Compound(vec![(
+            "outer".to_owned(),
+            NbtTag::Compound(vec![(
+                "inner".to_owned(),
+                NbtTag::Compound(vec![("value".to_owned(), NbtTag::Short(99))]),
+            )]),
+        )]);
+        named_round_trip("root", &tag);
+    }
+
+    #[test]
+    fn decode_named_tag_rejects_empty_input() {
+        assert_eq!(
+            decode_named_tag(&[]),
+            Err(ProtocolError::UnexpectedEndOfInput)
+        );
+    }
+
+    #[test]
+    fn decode_named_tag_rejects_invalid_type() {
+        // Unknown tag type 0x0d with empty name.
+        assert_eq!(
+            decode_named_tag(&[0x0d, 0x00, 0x00]),
+            Err(ProtocolError::InvalidPacketPayload)
+        );
+        // TAG_END is not a valid root.
+        assert_eq!(
+            decode_named_tag(&[TAG_END]),
+            Err(ProtocolError::InvalidPacketPayload)
+        );
+    }
+
+    #[test]
+    fn named_root_layout_type_name_payload() {
+        // Named Int root: type + name "x" + payload 5.
+        let encoded = encode_named_tag("x", &NbtTag::Int(5)).unwrap();
+        assert_eq!(
+            encoded,
+            vec![TAG_INT, 0x00, 0x01, b'x', 0x00, 0x00, 0x00, 0x05]
+        );
+        let (name, tag) = decode_named_tag(&encoded).unwrap();
+        assert_eq!(name, "x");
+        assert_eq!(tag, NbtTag::Int(5));
+    }
+
+    #[test]
+    fn network_decode_compound_tag_still_works() {
+        // Regression: unnamed network root must remain distinct from storage.
+        let entries = vec![
+            ("a".to_owned(), NbtTag::Short(7)),
+            ("b".to_owned(), NbtTag::IntArray(vec![1, 2])),
+        ];
+        let encoded = encode_compound_tag(&entries).unwrap();
+        // Network compound starts with type only (no root name).
+        assert_eq!(encoded[0], TAG_COMPOUND);
+        let decoded = decode_compound_tag(&encoded).unwrap();
+        assert_eq!(decoded, entries);
+
+        // Storage form of the same payload has an extra name after the type.
+        let named = encode_named_tag("", &NbtTag::Compound(entries.clone())).unwrap();
+        assert_ne!(named, encoded);
+        assert_eq!(&named[1..3], &[0x00, 0x00]); // empty name
+        let (name, tag) = decode_named_tag(&named).unwrap();
+        assert_eq!(name, "");
+        assert_eq!(tag, NbtTag::Compound(entries));
     }
 }

@@ -15,6 +15,7 @@ path = "src/main.rs"
 # Phase 1: tokio and the rest of the networking whitelist.
 hyperion_core = { path = "../hyperion_core" }
 hyperion_protocol = { path = "../hyperion_protocol" }
+hyperion_world = { path = "../hyperion_world" }
 tokio = { workspace = true }
 bytes = { workspace = true }
 uuid = { workspace = true }

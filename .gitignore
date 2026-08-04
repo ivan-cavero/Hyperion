@@ -16,7 +16,7 @@ Cargo.lock.orig
 Thumbs.db
 .DS_Store
 
-# Logs / runtime
+# Logs / runtime (default vanilla paths; do not commit live server state)
 *.log
 server.properties
 world/

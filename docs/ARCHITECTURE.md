@@ -23,6 +23,7 @@
 - Multi-version: block-state remapping layer between supported versions (short range in v1: 1.21 → 26.x, Pumpkin model).
 
 ### 3. World (hyperion_world)
+- **Bootstrap (partial, Phase 2)**: first-start data dir — vanilla `level-name` / `level-seed` → `<level-name>/level.dat` (gzip storage NBT), `session.lock`, list JSON stubs.
 - **Chunks**: Anvil format (compat with vanilla worlds, read/write) + **HCF** (Hyperion Chunk Format) for ultra-fast multi-threaded I/O.
 - **1:1 worldgen**: noise + biomes + surface + features + structures. Reference: cubiomes (MIT) for biomes/structures; own terrain core. Verification by diff against vanilla (same seed).
 - **Light**: sky/block light, parallel calculation.

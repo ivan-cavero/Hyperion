@@ -12,12 +12,13 @@
 //!
 //! Log level is controlled via `RUST_LOG` (default: `info`).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use hyperion_core::VERSION;
 use hyperion_server::config::{DEFAULT_CONFIG_PATH, ServerConfig};
 use hyperion_server::network::serve;
+use hyperion_world::{BootstrapConfig, prepare_data_directory};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -102,12 +103,42 @@ async fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
+    // Data root = parent of server.properties, or cwd when the config path has
+    // no parent component (e.g. plain "server.properties").
+    let data_root = config_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+
+    let data_paths = match prepare_data_directory(&BootstrapConfig {
+        root: data_root,
+        level_name: config.level_name.clone(),
+        level_seed: config.level_seed,
+        spawn_y: config.spawn_y,
+    }) {
+        Ok(paths) => paths,
+        Err(error) => {
+            error!("failed to prepare data directory: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    info!(
+        root = %data_paths.root.display(),
+        world_dir = %data_paths.world_dir.display(),
+        level_dat = %data_paths.level_dat.display(),
+        session_lock = %data_paths.session_lock.display(),
+        "data directory ready"
+    );
+
     info!(
         config_path = %config_path.display(),
         bind_address = %config.bind_address(),
         online_mode = config.online_mode,
         max_players = config.max_players,
         motd = %config.motd,
+        level_name = %config.level_name,
+        level_seed = config.level_seed,
         view_distance = config.view_distance,
         simulation_distance = config.simulation_distance,
         compression_threshold = config.compression_threshold,

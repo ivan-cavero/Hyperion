@@ -49,6 +49,18 @@ pub const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 /// Default spawn Y until worldgen provides a real surface.
 pub const DEFAULT_SPAWN_Y: i32 = 100;
 
+/// Default vanilla `level-name` (world folder under the server root, and
+/// default NBT `LevelName` written into a new `level.dat`).
+pub const DEFAULT_LEVEL_NAME: &str = "world";
+
+/// Default vanilla `level-seed`.
+///
+/// `0` means “pick a random seed once” when bootstrapping a missing
+/// `level.dat` (see `hyperion_world::prepare_data_directory`). The chosen seed
+/// is persisted in NBT (`RandomSeed` + `WorldGenSettings.seed`); existing
+/// worlds are never overwritten.
+pub const DEFAULT_LEVEL_SEED: i64 = 0;
+
 /// Startup configuration of the Hyperion server.
 ///
 /// Values come from `server.properties` (see [`ServerConfig::load`]) and may
@@ -80,7 +92,14 @@ pub struct ServerConfig {
     pub max_connections: usize,
     /// Message of the day shown in the server list and the tab list (`motd`).
     pub motd: String,
-    /// Y level of the default spawn point (Hyperion extension until worldgen).
+    /// Vanilla `level-name`: world folder under the server root and default
+    /// NBT `LevelName` for a new `level.dat`.
+    pub level_name: String,
+    /// Vanilla `level-seed`. `0` = random seed on first `level.dat` creation
+    /// only (persisted as `RandomSeed` / `WorldGenSettings.seed`).
+    pub level_seed: i64,
+    /// Default spawn Y written into a new `level.dat` as `SpawnY` (Hyperion
+    /// extension until worldgen provides a real surface).
     pub spawn_y: i32,
     /// How often the server sends a keep-alive to each player.
     pub keep_alive_interval_seconds: u64,
@@ -101,6 +120,8 @@ impl Default for ServerConfig {
             max_players: DEFAULT_MAX_PLAYERS,
             max_connections: DEFAULT_MAX_CONNECTIONS,
             motd: DEFAULT_MOTD.to_owned(),
+            level_name: DEFAULT_LEVEL_NAME.to_owned(),
+            level_seed: DEFAULT_LEVEL_SEED,
             spawn_y: DEFAULT_SPAWN_Y,
             keep_alive_interval_seconds: DEFAULT_KEEP_ALIVE_INTERVAL_SECONDS,
             keep_alive_timeout_seconds: DEFAULT_KEEP_ALIVE_TIMEOUT_SECONDS,
@@ -189,6 +210,15 @@ impl ServerConfig {
         if let Some(value) = map.get("motd") {
             config.motd = value.clone();
         }
+        if let Some(value) = map.get("level-name") {
+            if value.is_empty() {
+                return Err("level-name: must not be empty".to_owned());
+            }
+            config.level_name = value.clone();
+        }
+        if let Some(value) = map.get("level-seed") {
+            config.level_seed = parse_value(value, "level-seed")?;
+        }
         if let Some(value) = map.get("spawn-y") {
             config.spawn_y = parse_value(value, "spawn-y")?;
         }
@@ -245,6 +275,11 @@ max-players={}
 max-connections={}
 # Message of the day (server list + tab list).
 motd={}
+# World folder name (vanilla level-name → <level-name>/ and NBT LevelName).
+level-name={}
+# World seed (vanilla level-seed → level.dat RandomSeed / WorldGenSettings.seed).
+# 0 = random seed once when creating a missing level.dat (never overwrites existing).
+level-seed={}
 # Client chunk render distance.
 view-distance={}
 # Server-side simulation distance.
@@ -253,7 +288,7 @@ simulation-distance={}
 network-compression-threshold={}
 # Base URL of the session server (override for proxies / tests).
 session-server-url={}
-# Default spawn Y until worldgen is available (Hyperion extension).
+# Default SpawnY in a new level.dat until worldgen is available (Hyperion extension).
 spawn-y={}
 # Seconds between keep-alive probes (Hyperion extension).
 keep-alive-interval={}
@@ -266,6 +301,8 @@ keep-alive-timeout={}
             self.max_players,
             self.max_connections,
             escape_properties_value(&self.motd),
+            escape_properties_value(&self.level_name),
+            self.level_seed,
             self.view_distance,
             self.simulation_distance,
             compression,
@@ -422,6 +459,8 @@ mod tests {
         assert_eq!(loaded.max_players, original.max_players);
         assert_eq!(loaded.max_connections, original.max_connections);
         assert_eq!(loaded.motd, original.motd);
+        assert_eq!(loaded.level_name, original.level_name);
+        assert_eq!(loaded.level_seed, original.level_seed);
         assert_eq!(loaded.spawn_y, original.spawn_y);
         assert_eq!(
             loaded.keep_alive_interval_seconds,
@@ -431,6 +470,20 @@ mod tests {
             loaded.keep_alive_timeout_seconds,
             original.keep_alive_timeout_seconds
         );
+    }
+
+    #[test]
+    fn level_name_and_seed_round_trip() {
+        let config = ServerConfig {
+            level_name: "myworld".to_owned(),
+            level_seed: 12_345_678_901,
+            ..ServerConfig::default()
+        };
+        let loaded = ServerConfig::from_properties(&config.to_properties()).expect("parse");
+        assert_eq!(loaded.level_name, "myworld");
+        assert_eq!(loaded.level_seed, 12_345_678_901);
+        assert!(config.to_properties().contains("level-name=myworld"));
+        assert!(config.to_properties().contains("level-seed=12345678901"));
     }
 
     #[test]
@@ -473,9 +526,10 @@ mod tests {
 
     #[test]
     fn unknown_keys_are_ignored() {
-        let loaded = ServerConfig::from_properties("level-name=world\npvp=true\n")
+        let loaded = ServerConfig::from_properties("pvp=true\nenable-command-block=true\n")
             .expect("unknown keys should not fail");
         assert_eq!(loaded.max_players, DEFAULT_MAX_PLAYERS);
+        assert_eq!(loaded.level_name, DEFAULT_LEVEL_NAME);
     }
 
     #[test]
