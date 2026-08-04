@@ -21,6 +21,11 @@ Thumbs.db
 server.properties
 world/
 
+# Local play/dev server data (preferred working directory for manual runs).
+# Keep the folder itself in git; ignore everything generated inside it.
+/run/*
+!/run/README.md
+
 # Local Minecraft reference jars / extracts (regenerate via tools/mc-ref)
 tools/mc-ref/*.jar
 tools/mc-ref/extract/
