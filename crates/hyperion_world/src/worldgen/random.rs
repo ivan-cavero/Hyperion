@@ -1,10 +1,9 @@
-//! Seeded RNGs matching Minecraft Java Edition behaviour.
+//! Seeded RNGs matching Minecraft Java Edition behaviour (default server math).
 //!
 //! - [`LegacyRandom`]: `java.util.Random` / `LegacyRandomSource` (48-bit LCG).
 //! - [`XoroshiroRandom`]: `XoroshiroRandomSource` (modern overworld default).
 //!
-//! Algorithms reimplemented from the public protocol of Mojang’s sources
-//! (same math as vanilla; no third-party worldgen code).
+//! Own reimplementation of the same algorithms; no third-party worldgen code.
 
 /// Bit-mixing used when promoting a 64-bit world seed to 128-bit Xoroshiro state.
 ///

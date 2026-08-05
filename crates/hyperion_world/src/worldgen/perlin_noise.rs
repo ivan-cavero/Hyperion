@@ -2,8 +2,8 @@
 //!
 //! Matches vanilla construction: `firstOctave` + per-octave amplitudes.
 
-use super::improved_noise::ImprovedNoise;
-use super::random::RandomSource;
+use crate::worldgen::improved_noise::ImprovedNoise;
+use crate::worldgen::random::RandomSource;
 
 /// Octave Perlin noise with amplitudes (vanilla `PerlinNoise.create`).
 #[derive(Debug, Clone)]
@@ -91,7 +91,7 @@ fn wrap(value: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::worldgen::vanilla::random::XoroshiroRandom;
+    use crate::worldgen::random::XoroshiroRandom;
 
     #[test]
     fn perlin_deterministic() {

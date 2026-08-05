@@ -46,9 +46,9 @@ first-party code under MIT. Verification remains **diff against vanilla**
 Own core does not mean "everything day one". Layers ship with **declared** parity
 only when golden diffs are green. Live doc: `docs/WORLDGEN.md`.
 
-1. **Scaffold (done)** — flat then Hyperion hills for Play (explicitly **not** 1:1).
+1. **Scaffold (done, temporary)** — flat then provisional hills for Play (explicitly **not** 1:1).
 2. **Multi-palette sections + block-state registry (done)** — required before non-flat terrain.
-3. **Vanilla math foundation (in progress)** — Xoroshiro/Legacy RNG, Perlin/NormalNoise, density AST.
+3. **Default generator math (in progress)** — Xoroshiro/Legacy RNG, Perlin/NormalNoise, density AST (`worldgen::*`, no separate “vanilla” tree).
 4. **NoiseRouter + `final_density` chunk fill** — first real 1:1 terrain claim candidate.
 5. **Surface rules + multi-noise biomes** — climate from router outputs.
 6. **Aquifers, carvers, ores** — underground structure of the column.

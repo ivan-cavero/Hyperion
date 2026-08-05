@@ -1,7 +1,7 @@
 //! `NormalNoise` — two Perlin fields mixed as in vanilla (value ≈ first + second/2, scaled).
 
-use super::perlin_noise::PerlinNoise;
-use super::random::RandomSource;
+use crate::worldgen::perlin_noise::PerlinNoise;
+use crate::worldgen::random::RandomSource;
 
 /// Parameters from `data/minecraft/worldgen/noise/*.json`.
 #[derive(Debug, Clone, PartialEq)]
@@ -80,7 +80,7 @@ impl NormalNoise {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::worldgen::vanilla::random::XoroshiroRandom;
+    use crate::worldgen::random::XoroshiroRandom;
 
     #[test]
     fn temperature_params_parse() {

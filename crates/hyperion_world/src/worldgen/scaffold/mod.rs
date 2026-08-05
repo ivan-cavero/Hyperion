@@ -1,8 +1,8 @@
-//! **Hyperion scaffold terrain** — provisional, **not** vanilla 1:1.
+//! **Temporary** Play terrain only — **not** the 1:1 default generator.
 //!
-//! Same seed → same *Hyperion* hills. Different algorithms than Mojang’s
-//! density/noise router. Used so Play has non-flat columns while the
-//! vanilla-aligned generator (`worldgen::vanilla`) is built layer by layer.
+//! Same seed → same *scaffold* hills. Different algorithms than the official
+//! density/noise router. Exists only so clients can explore non-flat land while
+//! the real generator (`worldgen::{density, noise, …}`) is finished.
 //!
 //! See `docs/WORLDGEN.md`.
 

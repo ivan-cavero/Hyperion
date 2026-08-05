@@ -3,7 +3,7 @@
 //! Classic improved Perlin with Mojang’s permutation table init from a
 //! [`RandomSource`]. Coordinates are shifted by random `xo/yo/zo` offsets.
 
-use super::random::RandomSource;
+use crate::worldgen::random::RandomSource;
 
 /// One ImprovedNoise instance (permutation + origin offsets).
 #[derive(Debug, Clone)]
@@ -123,7 +123,7 @@ fn grad(hash: u8, x: f64, y: f64, z: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::worldgen::vanilla::random::LegacyRandom;
+    use crate::worldgen::random::LegacyRandom;
 
     #[test]
     fn improved_noise_deterministic() {

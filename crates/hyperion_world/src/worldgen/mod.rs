@@ -1,21 +1,30 @@
-//! World generation (ADR 0001: own core, target **vanilla 1:1**).
+//! World generation (ADR 0001: own core → **1:1 with the official Java server**).
 //!
-//! | Module | Role | Parity |
-//! |--------|------|--------|
-//! | [`scaffold`] | Temporary hills so Play is non-flat | Hyperion-only (same seed ⇒ same *our* world) |
-//! | [`vanilla`] | RNG, noise, density functions → future router | Building toward 1:1 |
+//! | Module | Role |
+//! |--------|------|
+//! | [`random`], noise, [`density`] | **Default generator math** — same algorithms as Java Edition |
+//! | [`scaffold`] | **Temporary** hills for Play only until density fill is ready |
 //!
-//! **North star**: `seed S` + protocol 26.2 datapack ⇒ same blocks as the
-//! official server for every column we claim. Layers light up with golden
-//! diffs in CI; we never silently claim parity for scaffold terrain.
+//! The end state is one default path: same seed → same blocks as the official
+//! server. Scaffold is not “a second product”; it is scaffolding to remove.
 //!
-//! Full policy: `docs/WORLDGEN.md`.
+//! Policy: `docs/WORLDGEN.md`.
 
+pub mod density;
+pub mod improved_noise;
+pub mod normal_noise;
+pub mod perlin_noise;
+pub mod random;
 pub mod scaffold;
-pub mod vanilla;
 
-// Play path still uses the scaffold generator until vanilla columns ship.
+// Play still uses scaffold until the density-based column fill is ready.
 pub use scaffold::{
     SEA_LEVEL, ensure_generated_on_disk, generate_column, load_or_generate, spawn_feet_y,
     surface_height, value_noise_2d,
 };
+
+// Default / 1:1 math surface.
+pub use density::{DensityContext, DensityFunction, NoiseRegistry, y_clamped_gradient};
+pub use normal_noise::{NoiseParameters, NormalNoise};
+pub use perlin_noise::PerlinNoise;
+pub use random::{LegacyRandom, RandomSource, XoroshiroRandom, world_seed_to_xoroshiro};

@@ -1,18 +1,18 @@
-//! Density function AST + evaluator (vanilla `DensityFunction` graph).
+//! Density function AST + evaluator (Java Edition `DensityFunction` graph).
 //!
-//! Parses Mojang datapack JSON shapes used under
+//! Parses official datapack JSON under
 //! `data/minecraft/worldgen/density_function/` and inline in `noise_settings`.
 //!
 //! **Parity status**: arithmetic / `y_clamped_gradient` / constants are solid.
 //! `noise`, `shifted_noise`, `old_blended_noise`, `spline`, `find_top_surface`,
-//! blend wrappers, etc. are stubs or partial — do not claim chunk 1:1 yet.
+//! blend wrappers, etc. are stubs or partial — chunk 1:1 not claimed yet.
 
 use std::collections::HashMap;
 
 use serde_json::Value;
 
-use super::normal_noise::{NoiseParameters, NormalNoise};
-use super::random::{RandomSource, XoroshiroRandom};
+use crate::worldgen::normal_noise::{NoiseParameters, NormalNoise};
+use crate::worldgen::random::{RandomSource, XoroshiroRandom};
 
 /// Evaluation context for a density sample.
 #[derive(Debug, Clone, Copy)]

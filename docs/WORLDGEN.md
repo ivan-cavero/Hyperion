@@ -1,83 +1,90 @@
-# Worldgen — path to vanilla 1:1
+# Worldgen — default behaviour = 1:1 with Java Edition
 
-Hyperion’s product promise: **same seed, same world, block by block** as
-Java Edition (26.2 first). That is a multi-layer project, not a single PR.
+Hyperion is a **Minecraft Java server**. The default world for a given seed
+must match the **official server** block by block (26.2 first). That is the
+product, not an optional mode.
+
+Research sources (we reverse-engineer and reimplement; we do not ship GPL code):
+
+- Mojang datapack JSON in `server-inner-*.jar` (`noise_settings`, density, noise, biomes, …)
+- Official data generators / reports under `tools/mc-ref/datagen/`
+- Public protocol and observed client/server behaviour
+- Independent analysis online when useful (always verify against the jar)
 
 ## Decision (ADR 0001)
 
 - **Own core in pure Rust** (MIT).
 - No cubiomes FFI, no Pumpkin/GPL inheritance.
-- Verification = **diff against vanilla** (same seed → same chunk), not “looks nice”.
+- Verification = **diff against the official server** (same seed → same chunk).
 
-## Two generators in the tree
+## Layout in code
 
-| Path | What it is | When used |
-|------|------------|-----------|
-| `worldgen::scaffold` | Hyperion hills (value noise + stone/dirt/grass) | **Play today** — so clients explore non-flat land |
-| `worldgen::vanilla` | Mojang-shaped RNG / Perlin / density AST | **Parity work** — not yet filling chunks |
+| Path | Role |
+|------|------|
+| `worldgen::{random, improved_noise, perlin_noise, normal_noise, density}` | **Default generator math** — reimplementation of Java Edition algorithms |
+| `worldgen::scaffold` | **Temporary** Play hills until density fill lands — **not** default long-term |
 
-Scaffold **must not** be marketed as 1:1. Same seed is only guaranteed to
-match **our** scaffold, not Mojang.
+Scaffold exists only so multiplayer works while we build the real pipeline.
+It will be **removed** (or demoted to a debug flat preset) once the density
+router produces joinable, testable terrain.
 
-## Vanilla pipeline (target architecture)
+## Default pipeline (target)
 
 ```
 level.dat seed
-    → WorldgenRandom (Xoroshiro; overworld legacy_random_source=false)
-    → NoiseRouter (density function graph from noise_settings + density_function JSON)
+    → WorldgenRandom (Xoroshiro for overworld; legacy_random_source=false)
+    → NoiseRouter (density graph from noise_settings + density_function JSON)
     → final_density / aquifers / ore veins
-    → block state fill (default_block / default_fluid + surface_rule)
-    → biomes (multi-noise climate from temperature/vegetation/… router outputs)
+    → block fill (default_block / default_fluid + surface_rule)
+    → biomes (multi-noise climate)
     → carvers → features → structures
     → Anvil column + heightmaps
 ```
 
-Datapack sources (from `server-inner-26.2.jar`):
+Datapack inputs (from the official jar):
 
-- `worldgen/noise_settings/overworld.json` — router + surface_rule + sea_level
-- `worldgen/density_function/**` — named density graph nodes
-- `worldgen/noise/**` — NormalNoise parameters (`firstOctave`, `amplitudes`)
-- `worldgen/biome/**` + biome parameter lists — multi-noise biomes
-- Surface rules, carvers, features, structures — later layers
+- `worldgen/noise_settings/overworld.json`
+- `worldgen/density_function/**`
+- `worldgen/noise/**`
+- biomes, surface rules, carvers, features, structures — later layers
 
-## Layer checklist (declare parity only when green)
+## Layer checklist
 
-| Layer | Status | Claim |
-|-------|--------|--------|
-| Multi-palette chunks + block ids | ✅ | Storage/network |
-| Scaffold surface (Hyperion) | ✅ | Not vanilla |
-| Xoroshiro / Legacy RNG | 🔄 foundation | Deterministic streams |
-| ImprovedNoise / Perlin / NormalNoise | 🔄 foundation | Math only |
-| Density AST (add/mul/y_gradient/noise/…) | 🔄 partial | No full router |
-| NoiseRouter + chunk fill from `final_density` | ⬜ | — |
-| Surface rules | ⬜ | — |
-| Multi-noise biomes | ⬜ | — |
-| Aquifers / carvers / ores | ⬜ | — |
-| Features / structures | ⬜ | — |
-| CI golden chunks vs vanilla dump | ⬜ | Exit criterion Phase 2 |
+Declare “matches official server” **only** when golden diffs are green.
 
-## How we will prove 1:1
+| Layer | Status |
+|-------|--------|
+| Multi-palette chunks + block ids | ✅ |
+| Scaffold hills (Play only) | ✅ temporary |
+| Xoroshiro / Legacy RNG | 🔄 foundation |
+| ImprovedNoise / Perlin / NormalNoise | 🔄 foundation |
+| Density AST (partial) | 🔄 partial |
+| NoiseRouter + chunk fill from `final_density` | ⬜ **next real milestone** |
+| Surface rules | ⬜ |
+| Multi-noise biomes | ⬜ |
+| Aquifers / carvers / ores | ⬜ |
+| Features / structures | ⬜ |
+| CI golden chunks vs official dump | ⬜ Phase 2 exit |
 
-1. Dump reference columns from a vanilla 26.2 server (same seed, known chunk coords).
-2. Store as fixtures under `tests/fixtures/worldgen/` (or generate in CI with a jar job).
-3. `assert_eq!(hyperion_column.blocks, vanilla_fixture.blocks)` per layer.
-4. Expand fixtures as each layer claims parity.
+## How we prove 1:1
 
-Until the golden suite is green for a layer, docs and MOTD must say
-**pre-alpha / scaffold**, not “vanilla worldgen”.
+1. Dump reference columns from an **official** 26.2 server (fixed seed + coords).
+2. Fixtures under tests (or CI job with the jar).
+3. `assert_eq!(hyperion, official)` per layer as it lands.
+4. Research online / decompile **only** to learn algorithms; parity is proven by diffs.
 
-## Play integration rule
+Until a layer is green: say **pre-alpha / scaffold**, never “full vanilla worlds”.
 
-- Default Play path: **scaffold** (current).
-- Switch to vanilla columns only when router fill produces joinable terrain
-  and at least a smoke golden test exists for seed + chunk (0,0).
+## Play integration
 
-## Regenerating datapack inputs
+- Today: scaffold columns.
+- Switch default Play to density fill when: router produces terrain **and** a
+  smoke golden test for seed + chunk (0,0) exists.
+
+## Regenerating data extracts
 
 ```powershell
-# After placing server-26.2.jar / server-inner-26.2.jar (see tools/mc-ref/README.md)
-cargo run -p hyperion_tools --bin gen-mc-ref   # blocks + join data
-# Worldgen JSON is read from the jar / reports as the vanilla path matures.
+cargo run -p hyperion_tools --bin gen-mc-ref
 ```
 
-JSON as an intermediate format is intentional (Mojang’s own data model).
+JSON from Mojang is the intermediate format; that is fine and intentional.

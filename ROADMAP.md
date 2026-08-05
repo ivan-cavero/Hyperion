@@ -145,8 +145,8 @@ Aligned with how vanilla/Paper actually win (batch I/O, never block the join pat
 - [x] **Block-state default ids**: `cargo run -p hyperion_tools --bin gen-block-states` → generated table (26.2)
 - [x] **mc-ref codegen in Rust**: `hyperion_tools` (join data, registry NBT, block states; no Python)
 - [x] **Worldgen surface scaffold (2.4)**: Hyperion hills (not 1:1); stone/dirt/grass/bedrock; Anvil persist
-- [x] **Worldgen vanilla foundation (2.5)**: Xoroshiro/Legacy RNG, Improved/Perlin/NormalNoise, density AST (partial); `docs/WORLDGEN.md`
-- [ ] **Worldgen (own core → 1:1)**: full NoiseRouter fill, surface rules, biomes, carvers, features, golden diffs
+- [x] **Worldgen default math (2.5)**: Xoroshiro/Legacy RNG, Improved/Perlin/NormalNoise, density AST (partial); `docs/WORLDGEN.md` (no `vanilla/` module — default = 1:1 goal)
+- [ ] **Worldgen (default 1:1)**: full NoiseRouter fill, surface rules, biomes, carvers, features, golden diffs vs official server
 - [ ] **Structures**: stronghold, villages, bastions… (phased parity; jigsaw last)
 - [ ] **HCF** (Hyperion Chunk Format) for ultra-fast multi-threaded load/save
 - [ ] **Light**: multi-threaded sky/block (today: full-bright sky mask only)
