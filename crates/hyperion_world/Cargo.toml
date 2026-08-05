@@ -15,6 +15,8 @@ thiserror = { workspace = true }
 serde_json = { workspace = true }
 # Read official server-inner.jar for density/noise_settings (dev/tests).
 zip = { workspace = true }
+# RandomSupport.seedFromHashOf (MD5) — same as JE RandomState noise wiring.
+md5 = { workspace = true }
 
 [lints]
 workspace = true

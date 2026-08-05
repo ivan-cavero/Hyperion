@@ -42,5 +42,8 @@ pub use engine::{ColumnGenerator, WorldgenMode, resolve_server_jar};
 pub use noise_settings::{NoiseSettings, NoiseSize};
 pub use normal_noise::{NoiseParameters, NormalNoise};
 pub use perlin_noise::PerlinNoise;
-pub use random::{LegacyRandom, RandomSource, XoroshiroRandom, world_seed_to_xoroshiro};
+pub use random::{
+    LegacyRandom, PositionalRandomFactory, RandomSource, Seed128, XoroshiroRandom,
+    seed_from_hash_of, upgrade_seed_to_128bit, world_seed_to_xoroshiro,
+};
 pub use surface_rules::apply_basic_surface;

@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use crate::worldgen::blended_noise::{BlendedNoise, BlendedNoiseParams};
 use crate::worldgen::normal_noise::{NoiseParameters, NormalNoise};
-use crate::worldgen::random::{RandomSource, XoroshiroRandom};
+use crate::worldgen::random::{PositionalRandomFactory, RandomSource};
 use crate::worldgen::spline::CubicSpline;
 
 /// Evaluation context for a density sample.
@@ -33,12 +33,18 @@ impl DensityContext {
 }
 
 /// Registry of named NormalNoise fields used by noise-typed density nodes.
-#[derive(Debug, Default)]
+///
+/// Noise instances are wired like JE `RandomState`: world seed →
+/// `forkPositional()` → `fromHashOf(resource id)` → `NormalNoise.create`.
+#[derive(Debug)]
 pub struct NoiseRegistry {
     params: HashMap<String, NoiseParameters>,
     instances: HashMap<String, NormalNoise>,
     blended: HashMap<String, BlendedNoise>,
-    seed: i64,
+    /// Positional factory from the world seed (`RandomState.random`).
+    positional: PositionalRandomFactory,
+    /// World seed (kept for diagnostics / future aquifer forks).
+    world_seed: i64,
 }
 
 impl NoiseRegistry {
@@ -47,8 +53,13 @@ impl NoiseRegistry {
             params: HashMap::new(),
             instances: HashMap::new(),
             blended: HashMap::new(),
-            seed,
+            positional: PositionalRandomFactory::from_world_seed(seed),
+            world_seed: seed,
         }
+    }
+
+    pub fn world_seed(&self) -> i64 {
+        self.world_seed
     }
 
     pub fn insert_params(&mut self, id: impl Into<String>, params: NoiseParameters) {
@@ -60,23 +71,41 @@ impl NoiseRegistry {
         Ok(())
     }
 
+    fn resolve_params(&self, id: &str) -> Option<NoiseParameters> {
+        self.params
+            .get(id)
+            .cloned()
+            .or_else(|| {
+                id.strip_prefix("minecraft:")
+                    .and_then(|s| self.params.get(s).cloned())
+            })
+            .or_else(|| {
+                // Allow lookup with/without namespace.
+                if !id.contains(':') {
+                    self.params.get(&format!("minecraft:{id}")).cloned()
+                } else {
+                    None
+                }
+            })
+    }
+
+    /// Canonical resource id for hashing (`minecraft:temperature`).
+    fn canonical_noise_id(id: &str) -> String {
+        if id.contains(':') {
+            id.to_owned()
+        } else {
+            format!("minecraft:{id}")
+        }
+    }
+
     fn noise(&mut self, id: &str) -> Result<&NormalNoise, String> {
         if !self.instances.contains_key(id) {
             let params = self
-                .params
-                .get(id)
-                .cloned()
-                .or_else(|| {
-                    // Allow unprefixed lookup.
-                    id.strip_prefix("minecraft:")
-                        .and_then(|s| self.params.get(s).cloned())
-                })
+                .resolve_params(id)
                 .ok_or_else(|| format!("unknown noise id {id}"))?;
-            let mut salt = self.seed;
-            for b in id.as_bytes() {
-                salt = salt.wrapping_mul(31).wrapping_add(i64::from(*b));
-            }
-            let mut random = XoroshiroRandom::from_seed(salt);
+            // JE: NormalNoise.create(random.fromHashOf(key.location()), params)
+            let key = Self::canonical_noise_id(id);
+            let mut random = self.positional.from_hash_of(&key);
             let noise = NormalNoise::create(&mut random as &mut dyn RandomSource, &params);
             self.instances.insert(id.to_owned(), noise);
         }
@@ -93,7 +122,10 @@ impl NoiseRegistry {
             params.smear_scale_multiplier
         );
         if !self.blended.contains_key(&key) {
-            let noise = BlendedNoise::create(self.seed, params);
+            // old_blended_noise is wired from the world random stream in JE;
+            // use a dedicated hash name so instances stay deterministic per seed.
+            let mut random = self.positional.from_hash_of("minecraft:old_blended_noise");
+            let noise = BlendedNoise::create_from_random(&mut random, params);
             self.blended.insert(key.clone(), noise);
         }
         self.blended.get(&key).expect("just inserted")

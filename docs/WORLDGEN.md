@@ -1,8 +1,12 @@
-# Worldgen — default behaviour = 1:1 with Java Edition
+# Worldgen — goal: same seed → same world as vanilla
 
-Hyperion is a **Minecraft Java server**. The default world for a given seed
-must match the **official server** block by block (26.2 first). That is the
-product, not an optional mode.
+Hyperion is a **Minecraft Java server**. The product goal is simple:
+
+> **Same `level-seed` as the official 26.2 server → same blocks.**
+
+That is not done yet. Everything below is the **implementation path** toward
+that goal (math, datapack load, fill). Play still uses temporary hills until
+the real generator is proven with golden dumps.
 
 Research sources (we reverse-engineer and reimplement; we do not ship GPL code):
 
@@ -60,8 +64,8 @@ Declare “matches official server” **only** when golden diffs are green.
 |-------|--------|
 | Multi-palette chunks + block ids | ✅ |
 | Scaffold hills (Play only) | ✅ temporary |
-| Xoroshiro / Legacy RNG | 🔄 foundation |
-| ImprovedNoise / Perlin / NormalNoise | 🔄 foundation |
+| Xoroshiro / Legacy RNG | 🔄 JE seed upgrade + MD5 fromHashOf + positional factory |
+| ImprovedNoise / Perlin / NormalNoise | 🔄 foundation; noise wired via RandomState-style hashes |
 | Density AST + library + string refs | 🔄 expanding |
 | `NoiseSettings` + fill from `final_density` | 🔄 cell-grid sample + trilinear; overworld resolves + fills |
 | Overworld graph types (spline, old_blended, interval_select, …) | 🔄 implemented enough to evaluate/fill; noise tables not golden-matched yet |
