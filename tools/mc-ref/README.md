@@ -1,12 +1,13 @@
 # mc-ref — vanilla 26.2 join data generators
 
-Scripts that rebuild the embedded Configuration data used by Hyperion.
+Rust tools that rebuild the embedded Configuration / world data used by Hyperion.
+**No Python required.**
 
 ## Prerequisites
 
-- Java 21+ (for the Mojang data generator)
-- Python 3.10+
+- Java 21+ (for the Mojang data generator only)
 - Vanilla `server.jar` for **26.2**
+- Rust toolchain (workspace)
 
 ## Setup (once per machine)
 
@@ -20,20 +21,28 @@ java "-DbundlerMainClass=net.minecraft.data.Main" `
   --reports --output datagen/generated
 ```
 
+Mojang’s data generator writes JSON reports (`blocks.json`, `registries.json`, …).
+JSON as intermediate format is intentional and fine; Hyperion then turns it into
+committed Rust tables / binary blobs via `hyperion_tools`.
+
 ## Regenerate embedded assets
 
 ```powershell
-python tools/mc-ref/gen_join_data.py
-python tools/mc-ref/gen_registry_nbt.py
-cargo run -p hyperion_world --bin gen-block-states
+# All three generators:
+cargo run -p hyperion_tools --bin gen-mc-ref
+
+# Or individually:
+cargo run -p hyperion_tools --bin gen-join-data
+cargo run -p hyperion_tools --bin gen-registry-nbt
+cargo run -p hyperion_tools --bin gen-block-states
 ```
 
 | Output | Purpose |
 |---|---|
 | `crates/hyperion_server/src/network/join_data/generated.rs` | Known pack id, registry entry lists, full Update Tags |
-| `crates/hyperion_server/src/network/join_data/registry_nbt.bin` | Fallback network NBT for every synchronized entry |
+| `crates/hyperion_server/src/network/join_data/registry_nbt.bin` | Network NBT for every synchronized registry entry |
 | `crates/hyperion_world/src/generated/block_states.rs` | Default block-state ids (binary-search table + constants) |
 
-`gen-block-states` is a **Rust** binary (`hyperion_world`) so version bumps stay in the same toolchain as the server. Join-data scripts remain Python until ported.
+Generated files are **committed** so CI does not need jars or reports.
 
 Jars, `datagen/`, `classes/` and extracts are gitignored.

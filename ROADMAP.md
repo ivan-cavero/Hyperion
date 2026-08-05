@@ -141,7 +141,8 @@ Aligned with how vanilla/Paper actually win (batch I/O, never block the join pat
 - [x] **Chunks (region I/O + stream)**: Anvil + Play streaming (flat)
 - [x] **ADR 0001**: own core (pure Rust) — Accepted 2026-08-05
 - [x] **Multi-palette sections**: single + indirect + global network encode; Anvil NBT `data`; `set_block`
-- [x] **Block-state default ids**: `cargo run -p hyperion_world --bin gen-block-states` → generated table (26.2)
+- [x] **Block-state default ids**: `cargo run -p hyperion_tools --bin gen-block-states` → generated table (26.2)
+- [x] **mc-ref codegen in Rust**: `hyperion_tools` (join data, registry NBT, block states; no Python)
 - [ ] **Worldgen (own core)**: noise, biomes, surface, caves, ores, trees — block-by-block parity goal
 - [ ] **Structures**: stronghold, villages, bastions… (phased parity; jigsaw last)
 - [ ] **HCF** (Hyperion Chunk Format) for ultra-fast multi-threaded load/save

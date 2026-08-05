@@ -7,8 +7,9 @@
 //!
 //! Regenerate:
 //! ```text
-//! python tools/mc-ref/gen_join_data.py
-//! python tools/mc-ref/gen_registry_nbt.py
+//! cargo run -p hyperion_tools --bin gen-join-data
+//! cargo run -p hyperion_tools --bin gen-registry-nbt
+//! # or: cargo run -p hyperion_tools --bin gen-mc-ref
 //! ```
 
 mod generated;

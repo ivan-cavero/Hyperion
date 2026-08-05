@@ -1,0 +1,35 @@
+[package]
+name = "hyperion_tools"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Hyperion offline codegen: block states, join registries, registry NBT"
+publish = false
+
+[dependencies]
+hyperion_protocol = { path = "../hyperion_protocol" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Read vanilla server-inner.jar datapacks (ZIP). Offline tooling only.
+zip = { workspace = true }
+
+[[bin]]
+name = "gen-block-states"
+path = "src/bin/gen_block_states.rs"
+
+[[bin]]
+name = "gen-join-data"
+path = "src/bin/gen_join_data.rs"
+
+[[bin]]
+name = "gen-registry-nbt"
+path = "src/bin/gen_registry_nbt.rs"
+
+[[bin]]
+name = "gen-mc-ref"
+path = "src/bin/gen_mc_ref.rs"
+
+[lints]
+workspace = true

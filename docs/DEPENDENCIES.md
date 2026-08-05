@@ -23,6 +23,7 @@
 | `md5` | Offline UUID v3 (vanilla `OfflinePlayer:<name>` parity) | MIT/Apache-2.0 | RustCrypto | ✅ active | Phase 1 |
 | `rand` | RNG for RSA key generation | MIT/Apache-2.0 | Rust Random project | ✅ active | Phase 1 |
 | `serde` + `serde_json` | Extracted data | MIT/Apache-2.0 | Serde team | ✅ active | Phase 1 |
+| `zip` | Read vanilla `server-inner.jar` for offline mc-ref codegen (`hyperion_tools` only) | MIT | zip-rs | ✅ active | Phase 2 tools |
 | `uuid` | Player/entity IDs | MIT/Apache-2.0 | uuid-rs | ✅ active | Phase 1 |
 | `thiserror` | Ergonomic errors | MIT/Apache-2.0 | dtolnay | ✅ active | Phase 1 |
 | `tracing` | Structured logging | MIT | Tokio team | ✅ active | Phase 1 |
