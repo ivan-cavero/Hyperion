@@ -15,6 +15,7 @@ use crate::chunk::{
     section_index,
 };
 use crate::level_dat::DEFAULT_DATA_VERSION;
+use crate::worldgen::aquifers::SimpleAquifer;
 use crate::worldgen::climate::ClimateSampler;
 use crate::worldgen::density::{DensityContext, DensityFunction, DensityLibrary};
 use crate::worldgen::noise_settings::NoiseSettings;
@@ -81,10 +82,7 @@ pub fn generate_column_density_only(
     let cell_h = settings.noise.cell_height();
     let solid = BlockState::new(settings.default_block.clone());
     let fluid = BlockState::new(settings.default_fluid.clone());
-    let lava = BlockState::new("minecraft:lava");
-    let sea = settings.sea_level;
-    // Rough aquifer floor: deep open space becomes lava (full AquiferSampler later).
-    let lava_y = -54;
+    let aquifer = SimpleAquifer::from_settings(settings, lib)?;
 
     let base_x = chunk_x * 16;
     let base_z = chunk_z * 16;
@@ -120,14 +118,10 @@ pub fn generate_column_density_only(
                         let d = grid.sample(world_x, world_y, world_z);
                         if d > 0.0 {
                             solid.clone()
-                        } else if world_y < sea {
-                            if world_y < lava_y {
-                                lava.clone()
-                            } else {
-                                fluid.clone()
-                            }
                         } else {
-                            BlockState::air()
+                            aquifer
+                                .compute(world_x, world_y, world_z, lib)?
+                                .to_block(&fluid)
                         }
                     };
                     let idx = section_index(lx as u8, ly as u8, lz as u8);

@@ -10,6 +10,7 @@
 //!
 //! Policy: `docs/WORLDGEN.md`.
 
+pub mod aquifers;
 pub mod blended_noise;
 pub mod chunk_fill;
 pub mod climate;

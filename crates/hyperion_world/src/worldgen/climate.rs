@@ -203,7 +203,8 @@ pub fn find_biome<'a>(points: &'a [BiomeParameterPoint], target: &ClimateTarget)
     best
 }
 
-/// Compact multi-noise table (subset). Ranges follow wiki / OverworldBiomeBuilder spirit.
+/// Expanded multi-noise table (still a subset of full OverworldBiomeBuilder).
+/// Temperature / continentalness / humidity bands track wiki + JE builder spirit.
 fn overworld_parameter_subset() -> Vec<BiomeParameterPoint> {
     #[allow(clippy::too_many_arguments)]
     fn pt(
@@ -233,88 +234,228 @@ fn overworld_parameter_subset() -> Vec<BiomeParameterPoint> {
         }
     }
 
-    // depth 0 = surface slice; full Y stack later.
-    let d0 = 0.0;
-    let d1 = 0.0;
-    let full_t = (-1.0, 1.0);
+    // depth ≈ 0 surface; small positive for cave biomes.
+    let d_surf = (0.0, 0.0);
+    let d_cave = (0.2, 0.9);
     let full_h = (-1.0, 1.0);
     let full_e = (-1.0, 1.0);
     let full_w = (-1.0, 1.0);
+    let full_t = (-1.0, 1.0);
 
-    vec![
-        // Oceans by continentalness
-        pt(
-            full_t.0, full_t.1, full_h.0, full_h.1, -1.2, -1.05, full_e.0, full_e.1, d0, d1,
-            full_w.0, full_w.1, "minecraft:mushroom_fields",
-        ),
-        pt(
-            -1.0, -0.45, full_h.0, full_h.1, -1.05, -0.455, full_e.0, full_e.1, d0, d1, full_w.0,
-            full_w.1, "minecraft:frozen_ocean",
-        ),
-        pt(
-            -0.45, 0.2, full_h.0, full_h.1, -1.05, -0.455, full_e.0, full_e.1, d0, d1, full_w.0,
-            full_w.1, "minecraft:ocean",
-        ),
-        pt(
-            0.2, 1.0, full_h.0, full_h.1, -1.05, -0.455, full_e.0, full_e.1, d0, d1, full_w.0,
-            full_w.1, "minecraft:warm_ocean",
-        ),
-        pt(
-            full_t.0, full_t.1, full_h.0, full_h.1, -0.455, -0.19, full_e.0, full_e.1, d0, d1,
-            full_w.0, full_w.1, "minecraft:ocean",
-        ),
-        // Coasts
-        pt(
-            full_t.0, full_t.1, full_h.0, full_h.1, -0.19, -0.11, full_e.0, full_e.1, d0, d1,
-            full_w.0, full_w.1, "minecraft:beach",
-        ),
-        // Rivers: high erosion corridors (approx)
-        pt(
-            full_t.0, full_t.1, full_h.0, full_h.1, -0.11, 0.55, 0.55, 1.0, d0, d1, full_w.0,
-            full_w.1, "minecraft:river",
-        ),
-        // Land — cold
-        pt(
-            -1.0, -0.45, full_h.0, full_h.1, -0.11, 1.0, full_e.0, 0.55, d0, d1, full_w.0, full_w.1,
-            "minecraft:snowy_plains",
-        ),
-        pt(
-            -0.45, -0.15, -1.0, 0.1, -0.11, 1.0, full_e.0, 0.55, d0, d1, full_w.0, full_w.1,
-            "minecraft:taiga",
-        ),
-        // temperate
-        pt(
-            -0.15, 0.2, -0.35, 0.4, -0.11, 1.0, full_e.0, 0.55, d0, d1, full_w.0, full_w.1,
-            "minecraft:plains",
-        ),
-        pt(
-            -0.15, 0.2, 0.1, 1.0, -0.11, 1.0, full_e.0, 0.55, d0, d1, full_w.0, full_w.1,
-            "minecraft:forest",
-        ),
-        // hot
-        pt(
-            0.2, 0.55, -1.0, -0.1, -0.11, 1.0, full_e.0, 0.55, d0, d1, full_w.0, full_w.1,
-            "minecraft:savanna",
-        ),
-        pt(
-            0.55, 1.0, -1.0, 0.3, -0.11, 1.0, full_e.0, 0.55, d0, d1, full_w.0, full_w.1,
-            "minecraft:desert",
-        ),
-        pt(
-            0.2, 1.0, 0.3, 1.0, -0.11, 1.0, full_e.0, 0.55, d0, d1, full_w.0, full_w.1,
-            "minecraft:jungle",
-        ),
-        // mountains / windswept (high weirdness or mid erosion)
-        pt(
-            full_t.0, full_t.1, full_h.0, full_h.1, 0.03, 1.0, -1.0, -0.3, d0, d1, 0.05, 1.0,
-            "minecraft:windswept_hills",
-        ),
-        // default catch-all
-        pt(
-            full_t.0, full_t.1, full_h.0, full_h.1, -0.11, 1.0, full_e.0, full_e.1, d0, d1,
-            full_w.0, full_w.1, "minecraft:plains",
-        ),
-    ]
+    // Temperature bands (builder-like)
+    let icy = (-1.0, -0.45);
+    let cool = (-0.45, -0.15);
+    let temp = (-0.15, 0.2);
+    let warm = (0.2, 0.55);
+    let hot = (0.55, 1.0);
+
+    // Continentalness
+    let mush = (-1.2, -1.05);
+    let deep_ocean = (-1.05, -0.455);
+    let ocean = (-0.455, -0.19);
+    let coast = (-0.19, -0.11);
+    let near = (-0.11, 0.03);
+    let mid = (0.03, 0.3);
+    let far = (0.3, 1.0);
+    let land = (-0.11, 1.0);
+
+    let mut v = Vec::with_capacity(48);
+
+    // --- Mushroom / oceans ---
+    v.push(pt(
+        full_t.0, full_t.1, full_h.0, full_h.1, mush.0, mush.1, full_e.0, full_e.1, d_surf.0,
+        d_surf.1, full_w.0, full_w.1, "minecraft:mushroom_fields",
+    ));
+    v.push(pt(
+        icy.0, icy.1, full_h.0, full_h.1, deep_ocean.0, deep_ocean.1, full_e.0, full_e.1, d_surf.0,
+        d_surf.1, full_w.0, full_w.1, "minecraft:frozen_ocean",
+    ));
+    v.push(pt(
+        cool.0, cool.1, full_h.0, full_h.1, deep_ocean.0, deep_ocean.1, full_e.0, full_e.1,
+        d_surf.0, d_surf.1, full_w.0, full_w.1, "minecraft:cold_ocean",
+    ));
+    v.push(pt(
+        temp.0, temp.1, full_h.0, full_h.1, deep_ocean.0, deep_ocean.1, full_e.0, full_e.1,
+        d_surf.0, d_surf.1, full_w.0, full_w.1, "minecraft:ocean",
+    ));
+    v.push(pt(
+        warm.0, warm.1, full_h.0, full_h.1, deep_ocean.0, deep_ocean.1, full_e.0, full_e.1,
+        d_surf.0, d_surf.1, full_w.0, full_w.1, "minecraft:lukewarm_ocean",
+    ));
+    v.push(pt(
+        hot.0, hot.1, full_h.0, full_h.1, deep_ocean.0, deep_ocean.1, full_e.0, full_e.1, d_surf.0,
+        d_surf.1, full_w.0, full_w.1, "minecraft:warm_ocean",
+    ));
+    // Shallower ocean band
+    v.push(pt(
+        icy.0, icy.1, full_h.0, full_h.1, ocean.0, ocean.1, full_e.0, full_e.1, d_surf.0, d_surf.1,
+        full_w.0, full_w.1, "minecraft:frozen_ocean",
+    ));
+    v.push(pt(
+        cool.0, temp.1, full_h.0, full_h.1, ocean.0, ocean.1, full_e.0, full_e.1, d_surf.0,
+        d_surf.1, full_w.0, full_w.1, "minecraft:ocean",
+    ));
+    v.push(pt(
+        warm.0, hot.1, full_h.0, full_h.1, ocean.0, ocean.1, full_e.0, full_e.1, d_surf.0, d_surf.1,
+        full_w.0, full_w.1, "minecraft:warm_ocean",
+    ));
+
+    // --- Coasts ---
+    v.push(pt(
+        icy.0, cool.1, full_h.0, full_h.1, coast.0, coast.1, full_e.0, full_e.1, d_surf.0, d_surf.1,
+        full_w.0, full_w.1, "minecraft:snowy_beach",
+    ));
+    v.push(pt(
+        temp.0, hot.1, full_h.0, full_h.1, coast.0, coast.1, -1.0, 0.2, d_surf.0, d_surf.1,
+        full_w.0, full_w.1, "minecraft:beach",
+    ));
+    v.push(pt(
+        full_t.0, full_t.1, full_h.0, full_h.1, coast.0, coast.1, 0.2, 1.0, d_surf.0, d_surf.1,
+        full_w.0, full_w.1, "minecraft:stony_shore",
+    ));
+
+    // --- Rivers (high erosion) ---
+    v.push(pt(
+        icy.0, cool.1, full_h.0, full_h.1, land.0, land.1, 0.55, 1.0, d_surf.0, d_surf.1, full_w.0,
+        full_w.1, "minecraft:frozen_river",
+    ));
+    v.push(pt(
+        temp.0, hot.1, full_h.0, full_h.1, land.0, land.1, 0.55, 1.0, d_surf.0, d_surf.1, full_w.0,
+        full_w.1, "minecraft:river",
+    ));
+
+    // --- Badlands (hot + dry + specific cont) ---
+    v.push(pt(
+        hot.0, hot.1, -1.0, -0.1, mid.0, far.1, -0.78, 0.55, d_surf.0, d_surf.1, full_w.0, full_w.1,
+        "minecraft:badlands",
+    ));
+    v.push(pt(
+        hot.0, hot.1, -0.1, 0.3, mid.0, far.1, -0.78, 0.55, d_surf.0, d_surf.1, full_w.0, full_w.1,
+        "minecraft:wooded_badlands",
+    ));
+
+    // --- Icy land ---
+    v.push(pt(
+        icy.0, icy.1, -1.0, 0.0, land.0, land.1, -1.0, 0.55, d_surf.0, d_surf.1, full_w.0, full_w.1,
+        "minecraft:snowy_plains",
+    ));
+    v.push(pt(
+        icy.0, icy.1, 0.0, 1.0, land.0, land.1, -1.0, 0.55, d_surf.0, d_surf.1, full_w.0, full_w.1,
+        "minecraft:snowy_taiga",
+    ));
+    v.push(pt(
+        icy.0, icy.1, full_h.0, full_h.1, far.0, far.1, -1.0, -0.375, d_surf.0, d_surf.1, 0.0,
+        1.0, "minecraft:frozen_peaks",
+    ));
+    v.push(pt(
+        icy.0, cool.1, full_h.0, full_h.1, mid.0, far.1, -1.0, -0.2225, d_surf.0, d_surf.1, 0.0,
+        1.0, "minecraft:jagged_peaks",
+    ));
+    v.push(pt(
+        icy.0, cool.1, full_h.0, full_h.1, mid.0, far.1, -0.2225, 0.05, d_surf.0, d_surf.1, 0.0,
+        1.0, "minecraft:snowy_slopes",
+    ));
+    v.push(pt(
+        icy.0, cool.1, full_h.0, full_h.1, mid.0, far.1, 0.05, 0.45, d_surf.0, d_surf.1, 0.0, 1.0,
+        "minecraft:grove",
+    ));
+
+    // --- Cool land ---
+    v.push(pt(
+        cool.0, cool.1, -1.0, -0.1, land.0, land.1, -1.0, 0.55, d_surf.0, d_surf.1, full_w.0,
+        full_w.1, "minecraft:plains",
+    ));
+    v.push(pt(
+        cool.0, cool.1, -0.1, 0.3, land.0, land.1, -1.0, 0.55, d_surf.0, d_surf.1, full_w.0,
+        full_w.1, "minecraft:taiga",
+    ));
+    v.push(pt(
+        cool.0, cool.1, 0.3, 1.0, land.0, land.1, -1.0, 0.55, d_surf.0, d_surf.1, full_w.0, full_w.1,
+        "minecraft:old_growth_pine_taiga",
+    ));
+
+    // --- Temperate land ---
+    v.push(pt(
+        temp.0, temp.1, -1.0, -0.35, land.0, land.1, -1.0, 0.55, d_surf.0, d_surf.1, full_w.0,
+        full_w.1, "minecraft:plains",
+    ));
+    v.push(pt(
+        temp.0, temp.1, -0.35, 0.1, near.0, mid.1, -1.0, 0.55, d_surf.0, d_surf.1, full_w.0,
+        full_w.1, "minecraft:forest",
+    ));
+    v.push(pt(
+        temp.0, temp.1, 0.1, 0.3, land.0, land.1, -1.0, 0.55, d_surf.0, d_surf.1, full_w.0, full_w.1,
+        "minecraft:birch_forest",
+    ));
+    v.push(pt(
+        temp.0, temp.1, 0.3, 1.0, land.0, land.1, -1.0, 0.55, d_surf.0, d_surf.1, full_w.0, full_w.1,
+        "minecraft:dark_forest",
+    ));
+    v.push(pt(
+        temp.0, temp.1, full_h.0, full_h.1, near.0, mid.1, -0.78, -0.375, d_surf.0, d_surf.1,
+        full_w.0, full_w.1, "minecraft:swamp",
+    ));
+    v.push(pt(
+        temp.0, warm.1, full_h.0, full_h.1, mid.0, far.1, -1.0, -0.375, d_surf.0, d_surf.1, 0.05,
+        1.0, "minecraft:meadow",
+    ));
+    v.push(pt(
+        temp.0, temp.1, full_h.0, full_h.1, mid.0, far.1, -0.375, 0.05, d_surf.0, d_surf.1, 0.05,
+        1.0, "minecraft:cherry_grove",
+    ));
+
+    // --- Warm / hot land ---
+    v.push(pt(
+        warm.0, warm.1, -1.0, -0.1, land.0, land.1, -1.0, 0.55, d_surf.0, d_surf.1, full_w.0,
+        full_w.1, "minecraft:savanna",
+    ));
+    v.push(pt(
+        warm.0, warm.1, -0.1, 0.3, land.0, land.1, -1.0, 0.55, d_surf.0, d_surf.1, full_w.0,
+        full_w.1, "minecraft:sparse_jungle",
+    ));
+    v.push(pt(
+        warm.0, warm.1, 0.3, 1.0, land.0, land.1, -1.0, 0.55, d_surf.0, d_surf.1, full_w.0, full_w.1,
+        "minecraft:jungle",
+    ));
+    v.push(pt(
+        hot.0, hot.1, -1.0, 0.2, land.0, land.1, -1.0, 0.55, d_surf.0, d_surf.1, full_w.0, full_w.1,
+        "minecraft:desert",
+    ));
+    v.push(pt(
+        hot.0, hot.1, 0.2, 1.0, land.0, land.1, -1.0, 0.55, d_surf.0, d_surf.1, full_w.0, full_w.1,
+        "minecraft:jungle",
+    ));
+
+    // --- Windswept / peaks temperate ---
+    v.push(pt(
+        cool.0, temp.1, full_h.0, full_h.1, mid.0, far.1, -1.0, -0.2225, d_surf.0, d_surf.1, 0.0,
+        1.0, "minecraft:windswept_hills",
+    ));
+    v.push(pt(
+        temp.0, warm.1, full_h.0, full_h.1, mid.0, far.1, -0.2225, 0.05, d_surf.0, d_surf.1, 0.0,
+        1.0, "minecraft:windswept_forest",
+    ));
+    v.push(pt(
+        full_t.0, full_t.1, full_h.0, full_h.1, far.0, far.1, -1.0, -0.2225, d_surf.0, d_surf.1,
+        0.0, 1.0, "minecraft:stony_peaks",
+    ));
+
+    // --- Cave biomes (depth > 0) ---
+    v.push(pt(
+        full_t.0, full_t.1, -1.0, 0.0, land.0, land.1, full_e.0, full_e.1, d_cave.0, d_cave.1,
+        full_w.0, full_w.1, "minecraft:dripstone_caves",
+    ));
+    v.push(pt(
+        full_t.0, full_t.1, 0.0, 1.0, land.0, land.1, full_e.0, full_e.1, d_cave.0, d_cave.1,
+        full_w.0, full_w.1, "minecraft:lush_caves",
+    ));
+
+    // Catch-all plains
+    v.push(pt(
+        full_t.0, full_t.1, full_h.0, full_h.1, land.0, land.1, full_e.0, full_e.1, d_surf.0,
+        d_surf.1, full_w.0, full_w.1, "minecraft:plains",
+    ));
+    v
 }
 
 #[cfg(test)]
@@ -352,6 +493,14 @@ mod tests {
         let points = overworld_parameter_subset();
         let target = ClimateTarget::from_floats(0.8, -0.5, 0.4, 0.0, 0.0, 0.0);
         let biome = find_biome(&points, &target);
-        assert_eq!(biome, "minecraft:desert");
+        assert!(
+            biome.contains("desert") || biome.contains("badlands"),
+            "got {biome}"
+        );
+    }
+
+    #[test]
+    fn table_has_dozens_of_points() {
+        assert!(overworld_parameter_subset().len() >= 30);
     }
 }

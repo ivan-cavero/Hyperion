@@ -71,8 +71,8 @@ Declare “matches official server” **only** when golden diffs are green.
 | Overworld graph types (spline, old_blended, interval_select, …) | 🔄 implemented enough to evaluate/fill; noise tables not golden-matched yet |
 | Golden parity vs official server dump | ⬜ Hyperion-stable fingerprints only (need official dumps) |
 | Surface rules | 🔄 basic pass + JSON tree interpreter (vertical_gradient/block/sequence; biomes fail-closed) |
-| Multi-noise biomes | 🔄 climate sample + compact parameter subset (not full OverworldBiomeBuilder) |
-| Aquifers / carvers / ores | 🔄 deep lava y&lt;-54 placeholder; full AquiferSampler later |
+| Multi-noise biomes | 🔄 climate sample + expanded parameter table (~40 points; not full builder yet) |
+| Aquifers / carvers / ores | 🔄 SimpleAquifer (floodedness + lava noise); full NoiseBasedAquifer later |
 | Features / structures | ⬜ |
 | CI golden chunks vs official dump | ⬜ Phase 2 exit |
 
