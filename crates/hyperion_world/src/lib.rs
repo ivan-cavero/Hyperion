@@ -1,17 +1,18 @@
 //! Hyperion world.
 //!
 //! Phase 2: vanilla-like server data directory bootstrap, minimal `level.dat`,
-//! Anvil region I/O, and **chunk columns** (storage NBT + network encoding).
+//! Anvil region I/O, and **chunk columns** (single- and multi-palette sections).
 //! Terminology matches Java Edition / `server.properties`:
 //! - `level-name` → world folder + NBT `LevelName`
 //! - `level-seed` → NBT `RandomSeed` / `WorldGenSettings.seed` (0 = random once)
 //!
-//! Worldgen / multi-palette sections / HCF follow later in Phase 2.
+//! Own-core worldgen (ADR 0001) and HCF follow later in Phase 2.
 
 mod anvil;
 mod bootstrap;
 mod chunk;
 mod error;
+mod generated;
 mod gzip_util;
 mod level_dat;
 
@@ -21,12 +22,14 @@ pub use anvil::{
 };
 pub use bootstrap::{BootstrapConfig, DataPaths, prepare_data_directory};
 pub use chunk::{
-    BLOCK_STATE_AIR, BLOCK_STATE_BEDROCK, BLOCK_STATE_STONE, BlockState, ChunkColumn, ChunkSection,
-    FlatNetworkCache, MAX_SECTION_Y, MIN_SECTION_Y, PLAINS_BIOME, PLAINS_BIOME_NETWORK_ID,
-    SECTION_COUNT, block_to_chunk, ensure_flat_on_disk, ensure_spawn_chunk, load_chunk,
-    load_or_create_flat, load_or_flat, position_to_chunk, save_chunk, snap_ground_y,
+    BLOCK_STATE_AIR, BLOCK_STATE_BEDROCK, BLOCK_STATE_DIRT, BLOCK_STATE_GRASS_BLOCK,
+    BLOCK_STATE_STONE, BlockState, ChunkColumn, ChunkSection, FlatNetworkCache, MAX_SECTION_Y,
+    MIN_SECTION_Y, PLAINS_BIOME, PLAINS_BIOME_NETWORK_ID, SECTION_COUNT, block_to_chunk,
+    ensure_flat_on_disk, ensure_spawn_chunk, load_chunk, load_or_create_flat, load_or_flat,
+    position_to_chunk, save_chunk, section_index, snap_ground_y,
 };
 pub use error::WorldError;
+pub use generated::block_states;
 pub use gzip_util::{gzip_compress, gzip_decompress};
 pub use level_dat::{DEFAULT_DATA_VERSION, LevelMeta, read_level_dat, write_level_dat};
 

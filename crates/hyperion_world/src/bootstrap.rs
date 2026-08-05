@@ -272,8 +272,8 @@ mod tests {
             .expect("load spawn")
             .expect("spawn present");
         assert_eq!(
-            spawn.sections[0].block,
-            crate::BlockState::stone(),
+            spawn.sections[0].single_block(),
+            Some(&crate::BlockState::stone()),
             "bottom should be solid stone"
         );
 

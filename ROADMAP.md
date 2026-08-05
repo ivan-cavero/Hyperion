@@ -20,29 +20,30 @@ in F3, and use **real creative** mode. CI green (test, clippy, fmt, audit, deny,
 | Network / protocol 776 | ✅ | Handshake→Status/Login→Config→Play; fuzz; E2E |
 | Auth | ✅ | Offline + online (Mojang); AES/CFB8; compression |
 | World disk | ✅ | `server.properties`, `level.dat`, Anvil `.mca` (append path) |
-| Chunks in Play | ✅ | Flat single-value sections; view-distance stream |
+| Chunks in Play | ✅ | Flat + multi-palette; view-distance stream |
 | Performance path | ✅ baseline | No per-packet flush; flat network template; lazy disk |
-| Worldgen 1:1 | ⬜ | ADR 0001 still open |
+| Worldgen 1:1 | ⬜ | ADR 0001 **Accepted**: own core (pure Rust) |
 | Simulation / plugins | ⬜ | Stub crates only |
 
 **Product bar (unchanged)**: vanilla **1:1 behaviour** where we claim parity, with a
 server path **much faster than Paper** (RAM, disk, login, serve). Flat world is not
 full parity yet — it is the scaffold to prove the engine before real worldgen.
 
-### What we shipped recently (2.0 → 2.2 + perf)
+### What we shipped recently (2.0 → 2.3)
 
 1. **2.0** — Data dir bootstrap, storage NBT, minimal `level.dat`
 2. **Anvil region I/O** — `.mca` read/write with size caps (later: append, not full rewrite)
 3. **2.1** — Chunk column NBT, flat platform, Play serves real chunks, creative + brand
 4. **2.2** — `ChunkView` streaming on move, unload, cache center, dirty Anvil persist
 5. **Perf pass** — TCP batch flush, `FlatNetworkCache`, lazy disk budget, zlib fast
+6. **2.3** — Multi-palette sections + generated default block-state ids (26.2); ADR 0001 own core
 
 ### Honest gaps (next work)
 
-- Multi-palette sections / non-flat terrain  
-- ADR 0001 worldgen decision + noise/surface  
+- Own-core worldgen layers: noise/surface → biomes → caves/ores → features  
 - Async workers (gen/load/save) like Paper  
-- Packet codegen + full block-state registry  
+- Packet codegen (codecs still hand-written; **block-state default ids** are generated)  
+- Property-aware block states (only default states today)  
 - Light engine (not only full-bright sky mask)
 
 ---
@@ -65,7 +66,7 @@ Prepare the ground: decisions, toolchain, CI, workspace skeleton.
 - [x] Cargo workspace with the 6 crates (`hyperion_core`, `hyperion_protocol`, `hyperion_world`, `hyperion_simulation`, `hyperion_plugin_api`, `hyperion_server`)
 - [x] Pinned stable Rust toolchain (`rust-toolchain.toml`) + `rustfmt.toml` + `.editorconfig` + `.gitattributes` (LF)
 - [x] Full CI: `cargo build` · `cargo test` · `cargo clippy -D warnings` · `cargo fmt --check` + **cargo-audit** (security) + **cargo-deny** (licenses) + dependabot — fuzz is added in Phase 1
-- [ ] Worldgen decision: own core vs. cubiomes reference (MIT) vs. inherit from Pumpkin (GPL) — **ADR 0001 open, Phase 2 deadline**
+- [x] Worldgen decision: **own core** (pure Rust) — ADR 0001 Accepted 2026-08-05; no cubiomes FFI, no Pumpkin gen
 - [x] Data extraction setup (see Phase 2) — chosen and implemented: Mojang data generators + jar extractor (`tools/mc-ref`, ready; generates 26.2 reports + embedded join data)
 - [x] README + ROADMAP + CONTRIBUTING + docs (ARCHITECTURE, DEPENDENCIES, ADR 0001–0005) published
 - [x] First foundation commit created
@@ -135,16 +136,17 @@ Aligned with how vanilla/Paper actually win (batch I/O, never block the join pat
 
 ### Remaining Phase 2 work
 
-- [ ] **Data extraction pipeline**: generic versioned JSON pipeline (*partial: `tools/mc-ref` for 26.2 join data*)
-- [ ] **Codegen**: `build.rs` → structs/coders/registries + full block-state id map
+- [ ] **Data extraction pipeline**: generic versioned JSON pipeline (*partial: `tools/mc-ref` for 26.2 join data + block states*)
+- [ ] **Codegen**: `build.rs` → packet structs/coders (*block-state default ids generated*)
 - [x] **Chunks (region I/O + stream)**: Anvil + Play streaming (flat)
-- [ ] **Multi-palette sections** / arbitrary block placement in a section
-- [ ] **Worldgen**: noise, biomes, surface, caves, ores, trees — block-by-block parity goal
-- [ ] **Structures**: stronghold, villages, bastions… (phased parity)
+- [x] **ADR 0001**: own core (pure Rust) — Accepted 2026-08-05
+- [x] **Multi-palette sections**: single + indirect + global network encode; Anvil NBT `data`; `set_block`
+- [x] **Block-state default ids**: `cargo run -p hyperion_world --bin gen-block-states` → generated table (26.2)
+- [ ] **Worldgen (own core)**: noise, biomes, surface, caves, ores, trees — block-by-block parity goal
+- [ ] **Structures**: stronghold, villages, bastions… (phased parity; jigsaw last)
 - [ ] **HCF** (Hyperion Chunk Format) for ultra-fast multi-threaded load/save
 - [ ] **Light**: multi-threaded sky/block (today: full-bright sky mask only)
 - [ ] **Differential testing**: same seed vs vanilla in CI
-- [ ] **ADR 0001**: own vs cubiomes vs Pumpkin (GPL) — still **Proposed**
 
 **Exit criterion**: same seed → same chunk in Hyperion and vanilla (diff suite), existing Anvil worlds loadable. 🔄 (Anvil load/save path exists; parity gen does not)
 
@@ -262,7 +264,7 @@ Turn the project into a product with community.
 |---|---|---|
 | **Scope** (the largest): full vanilla parity is a multi-year team project (Pumpkin has spent 2 years without 1.0) | 🔴 High | MVP = hub/minigames; declare parity by layers; feature subset for v1 |
 | Rust MC project mortality (many die from scope) | 🔴 High | Roadmap with verifiable milestones, community from day 1 |
-| Full 1:1 worldgen (jigsaw structures) | 🟠 Medium | cubiomes reference (MIT) + diff testing; structures in phases |
+| Full 1:1 worldgen (jigsaw structures) | 🟠 Medium | Own core + layered parity + diff testing; structures last |
 | Wide multi-version (1.8+) | 🟠 Medium | v1 short range (1.21+); ViaVersion in front as an option |
 | Pumpkin GPLv3: if code is inherited, the project becomes GPL | 🟠 Medium | License decision in Phase 0; own code whenever possible |
 | WASM performance in plugins | 🟡 Low | wasmtime JIT; Lua scripting for hot paths; benchmark in Phase 6 |
@@ -272,7 +274,7 @@ Turn the project into a product with community.
 
 ## Open decisions (pending ADRs)
 
-1. **Worldgen**: own core vs. cubiomes (MIT) vs. inherit from Pumpkin (GPL). *Deadline: Phase 2.*
+1. ~~**Worldgen**~~ → **ADR 0001 Accepted**: own core (pure Rust).
 2. **ECS**: use `bevy_ecs` vs. minimal own ECS system. *Phase 3.*
 3. **Final license** if third-party code is incorporated. *Phase 0.*
 4. **Multi-version range** for v1: only 26.x vs. 1.21+ like Pumpkin. *Phase 5.*

@@ -523,6 +523,8 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "hyperion_protocol",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 

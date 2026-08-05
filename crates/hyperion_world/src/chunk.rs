@@ -1,21 +1,23 @@
 //! Anvil chunk column model, storage NBT, and network encoding helpers.
 //!
-//! Phase 2.1 scope:
-//! - Single-valued sections (whole section = one block + one biome)
-//! - Storage NBT round-trip compatible with modern Anvil (1.18+ layout)
-//! - Flat spawn column written on first boot
-//! - Convert to [`NetworkChunkSection`] for Play
+//! Supports:
+//! - Single-valued sections (flat world hot path)
+//! - Multi-palette sections (`set_block` / arbitrary terrain)
+//! - Storage NBT round-trip (1.18+ Anvil layout)
+//! - Network `level_chunk_with_light` via [`NetworkChunkSection`]
 
 use std::path::Path;
 
 use hyperion_protocol::{
-    HEIGHTMAP_MOTION_BLOCKING, HEIGHTMAP_WORLD_SURFACE, NbtTag, NetworkChunkSection,
-    NetworkHeightmap, ProtocolError, decode_named_tag, encode_chunk_payload, encode_named_tag,
-    pack_heightmap_values,
+    BLOCK_SECTION_SIZE, HEIGHTMAP_MOTION_BLOCKING, HEIGHTMAP_WORLD_SURFACE, NbtTag,
+    NetworkChunkSection, NetworkHeightmap, NetworkPalettedContainer, PaletteKind, ProtocolError,
+    bits_needed, decode_named_tag, encode_chunk_payload, encode_named_tag, pack_heightmap_values,
+    pack_simple_bit_storage, simple_bit_storage_long_count,
 };
 
 use crate::anvil::{RegionFile, region_path};
 use crate::error::WorldError;
+use crate::generated::block_states;
 use crate::level_dat::DEFAULT_DATA_VERSION;
 
 /// Lowest section Y in the overworld (block Y -64).
@@ -31,20 +33,24 @@ pub const PLAINS_BIOME: &str = "minecraft:plains";
 pub const PLAINS_BIOME_NETWORK_ID: i32 = 0;
 
 // ---------------------------------------------------------------------------
-// Provisional global block-state ids (protocol 776 / 26.2)
+// Block-state ids (from generated 26.2 report)
 // ---------------------------------------------------------------------------
-// Ordered like recent 1.21.x registries (air=0, stone=1, …). Replace with
-// codegen from Mojang reports when the Phase 2 data pipeline lands.
 
 /// Global palette id for `minecraft:air`.
-pub const BLOCK_STATE_AIR: i32 = 0;
+pub const BLOCK_STATE_AIR: i32 = block_states::AIR;
 /// Global palette id for `minecraft:stone` (default state).
-pub const BLOCK_STATE_STONE: i32 = 1;
-/// Global palette id for `minecraft:bedrock` (26.1 registry = 85).
-/// Prefer stone for network solid fill until the full 26.2 block map is codegen'd.
-pub const BLOCK_STATE_BEDROCK: i32 = 85;
+pub const BLOCK_STATE_STONE: i32 = block_states::STONE;
+/// Global palette id for `minecraft:bedrock` (default state).
+pub const BLOCK_STATE_BEDROCK: i32 = block_states::BEDROCK;
+/// Global palette id for `minecraft:dirt` (default state).
+pub const BLOCK_STATE_DIRT: i32 = block_states::DIRT;
+/// Global palette id for `minecraft:grass_block` (default state).
+pub const BLOCK_STATE_GRASS_BLOCK: i32 = block_states::GRASS_BLOCK;
 
 /// A block state identified by resource location (Anvil palette entry).
+///
+/// Phase 2: default state only (no property map). Property-aware states land
+/// with placement/worldgen.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BlockState {
     /// e.g. `minecraft:stone`
@@ -76,6 +82,16 @@ impl BlockState {
         Self::new("minecraft:bedrock")
     }
 
+    /// Dirt.
+    pub fn dirt() -> Self {
+        Self::new("minecraft:dirt")
+    }
+
+    /// Grass block (default `snowy=false`).
+    pub fn grass_block() -> Self {
+        Self::new("minecraft:grass_block")
+    }
+
     /// Whether this is air (including cave/void air names).
     pub fn is_air(&self) -> bool {
         matches!(
@@ -84,30 +100,49 @@ impl BlockState {
         )
     }
 
-    /// Provisional global palette id for the network encoder.
+    /// Whether this is a fluid block for `fluidCount` (default states).
+    pub fn is_fluid(&self) -> bool {
+        matches!(
+            self.name.as_str(),
+            "minecraft:water"
+                | "minecraft:lava"
+                | "minecraft:flowing_water"
+                | "minecraft:flowing_lava"
+        )
+    }
+
+    /// Global palette id for the network encoder (default state from 26.2 report).
     ///
-    /// Until block-state codegen lands we only trust air (0) and stone (1).
-    /// Other names (including bedrock) map to stone so a wrong provisional id
-    /// cannot turn the platform into glass/water/etc.
+    /// Unknown names fall back to stone so a wrong id cannot become glass/water.
     pub fn network_id(&self) -> i32 {
         match self.name.as_str() {
-            "minecraft:air" | "air" | "minecraft:cave_air" | "minecraft:void_air" => {
-                BLOCK_STATE_AIR
-            }
-            // stone, bedrock, dirt, … → solid stone id
-            _ => BLOCK_STATE_STONE,
+            "minecraft:air" | "air" => BLOCK_STATE_AIR,
+            "minecraft:cave_air" => block_states::CAVE_AIR,
+            "minecraft:void_air" => block_states::VOID_AIR,
+            other => block_states::default_state_id(other).unwrap_or(BLOCK_STATE_STONE),
         }
     }
 }
 
-/// One 16×16×16 section with a single block filling the volume.
+/// Block storage for one 16×16×16 section.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SectionBlocks {
+    /// Entire section is one block (flat / uniform fill).
+    Single(BlockState),
+    /// Multi-palette: unique states + 4096 local indices (YZX order).
+    Multi {
+        palette: Vec<BlockState>,
+        indices: Box<[u16; BLOCK_SECTION_SIZE]>,
+    },
+}
+
+/// One 16×16×16 section.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChunkSection {
     /// Section Y index (e.g. -4 for the bottom overworld section).
     pub y: i8,
-    /// Block filling the entire section.
-    pub block: BlockState,
-    /// Biome resource location filling the entire section.
+    blocks: SectionBlocks,
+    /// Biome resource location filling the entire section (single-value for now).
     pub biome: String,
 }
 
@@ -116,7 +151,7 @@ impl ChunkSection {
     pub fn air(y: i8, biome: impl Into<String>) -> Self {
         Self {
             y,
-            block: BlockState::air(),
+            blocks: SectionBlocks::Single(BlockState::air()),
             biome: normalize_biome(biome),
         }
     }
@@ -125,22 +160,196 @@ impl ChunkSection {
     pub fn solid(y: i8, block: BlockState, biome: impl Into<String>) -> Self {
         Self {
             y,
-            block,
+            blocks: SectionBlocks::Single(block),
             biome: normalize_biome(biome),
         }
     }
 
+    /// Whether every cell is air.
+    pub fn is_all_air(&self) -> bool {
+        match &self.blocks {
+            SectionBlocks::Single(b) => b.is_air(),
+            SectionBlocks::Multi { palette, indices } => {
+                indices.iter().all(|&i| palette[i as usize].is_air())
+            }
+        }
+    }
+
+    /// Block at local coordinates (0..16 each).
+    pub fn get_block(&self, x: u8, y: u8, z: u8) -> BlockState {
+        debug_assert!(x < 16 && y < 16 && z < 16);
+        match &self.blocks {
+            SectionBlocks::Single(b) => b.clone(),
+            SectionBlocks::Multi { palette, indices } => {
+                let idx = section_index(x, y, z);
+                palette[indices[idx] as usize].clone()
+            }
+        }
+    }
+
+    /// Sets a block at local coordinates, promoting single → multi as needed.
+    pub fn set_block(&mut self, x: u8, y: u8, z: u8, state: BlockState) {
+        debug_assert!(x < 16 && y < 16 && z < 16);
+        let idx = section_index(x, y, z);
+        match &mut self.blocks {
+            SectionBlocks::Single(current) => {
+                if *current == state {
+                    return;
+                }
+                let old = current.clone();
+                let mut palette = vec![old];
+                let mut indices = Box::new([0u16; BLOCK_SECTION_SIZE]);
+                let new_i = palette_index(&mut palette, state);
+                indices[idx] = new_i;
+                self.blocks = SectionBlocks::Multi { palette, indices };
+            }
+            SectionBlocks::Multi { palette, indices } => {
+                let pi = palette_index(palette, state);
+                indices[idx] = pi;
+            }
+        }
+    }
+
+    /// Non-air block count (0..=4096).
+    pub fn non_air_count(&self) -> i16 {
+        match &self.blocks {
+            SectionBlocks::Single(b) => {
+                if b.is_air() {
+                    0
+                } else {
+                    4096
+                }
+            }
+            SectionBlocks::Multi { palette, indices } => indices
+                .iter()
+                .filter(|&&i| !palette[i as usize].is_air())
+                .count() as i16,
+        }
+    }
+
+    /// Fluid cell count for the network section header.
+    pub fn fluid_count(&self) -> i16 {
+        match &self.blocks {
+            SectionBlocks::Single(b) => {
+                if b.is_fluid() {
+                    4096
+                } else {
+                    0
+                }
+            }
+            SectionBlocks::Multi { palette, indices } => indices
+                .iter()
+                .filter(|&&i| palette[i as usize].is_fluid())
+                .count() as i16,
+        }
+    }
+
     /// Network encoding of this section.
-    ///
-    /// Biome network ids are not resolved yet (always plains = 0) until the
-    /// registry codegen lands; storage still keeps the resource location.
     pub fn to_network(&self) -> NetworkChunkSection {
         let biome_id = PLAINS_BIOME_NETWORK_ID;
-        if self.block.is_air() {
-            NetworkChunkSection::air(biome_id)
-        } else {
-            NetworkChunkSection::solid(self.block.network_id(), biome_id)
+        let biomes = NetworkPalettedContainer::single(biome_id);
+        let blocks = match &self.blocks {
+            SectionBlocks::Single(b) => NetworkPalettedContainer::single(b.network_id()),
+            SectionBlocks::Multi { palette, indices } => {
+                let global: Vec<i32> = palette.iter().map(BlockState::network_id).collect();
+                NetworkPalettedContainer::from_palette_indices(
+                    PaletteKind::Blocks,
+                    &global,
+                    indices.as_ref(),
+                )
+                .unwrap_or_else(|_| NetworkPalettedContainer::single(BLOCK_STATE_STONE))
+            }
+        };
+        NetworkChunkSection::with_containers(
+            self.non_air_count(),
+            self.fluid_count(),
+            blocks,
+            biomes,
+        )
+    }
+
+    /// True when storage is single-valued (used by flat network cache path).
+    pub fn is_single_valued(&self) -> bool {
+        matches!(self.blocks, SectionBlocks::Single(_))
+    }
+
+    /// Single fill block when single-valued; `None` if multi.
+    pub fn single_block(&self) -> Option<&BlockState> {
+        match &self.blocks {
+            SectionBlocks::Single(b) => Some(b),
+            SectionBlocks::Multi { .. } => None,
         }
+    }
+
+    fn to_block_states_nbt(&self) -> NbtTag {
+        match &self.blocks {
+            SectionBlocks::Single(block) => {
+                let palette = NbtTag::List(vec![block_state_compound(block)]);
+                NbtTag::Compound(vec![("palette".to_owned(), palette)])
+            }
+            SectionBlocks::Multi { palette, indices } => {
+                let palette_tag =
+                    NbtTag::List(palette.iter().map(block_state_compound).collect::<Vec<_>>());
+                let bits = bits_for_block_storage(palette.len());
+                let longs = pack_simple_bit_storage(bits, indices.iter().map(|&i| u32::from(i)));
+                NbtTag::Compound(vec![
+                    ("palette".to_owned(), palette_tag),
+                    ("data".to_owned(), NbtTag::LongArray(longs)),
+                ])
+            }
+        }
+    }
+
+    fn from_block_states_nbt(states: &[(String, NbtTag)]) -> Result<SectionBlocks, WorldError> {
+        let palette_tags = find_list(states, "palette")?;
+        if palette_tags.is_empty() {
+            return Ok(SectionBlocks::Single(BlockState::air()));
+        }
+        let mut palette = Vec::with_capacity(palette_tags.len());
+        for entry in palette_tags {
+            palette.push(parse_block_palette_entry(entry)?);
+        }
+        if palette.len() == 1 {
+            // Single-valued: data array optional/absent.
+            return Ok(SectionBlocks::Single(palette.pop().expect("len 1")));
+        }
+
+        let data = match find_tag(states, "data") {
+            Ok(NbtTag::LongArray(longs)) => longs.as_slice(),
+            Ok(_) => {
+                return Err(WorldError::InvalidChunk(
+                    "block_states.data must be a long array".to_owned(),
+                ));
+            }
+            Err(_) => {
+                return Err(WorldError::InvalidChunk(
+                    "multi-entry block palette missing data".to_owned(),
+                ));
+            }
+        };
+
+        let bits = bits_for_block_storage(palette.len());
+        let expected_longs = simple_bit_storage_long_count(bits, BLOCK_SECTION_SIZE);
+        if data.len() < expected_longs {
+            return Err(WorldError::InvalidChunk(format!(
+                "block_states.data too short: {} < {expected_longs}",
+                data.len()
+            )));
+        }
+        let indices = unpack_simple_bit_storage(bits, BLOCK_SECTION_SIZE, data);
+        let max = (palette.len() - 1) as u16;
+        for &i in indices.iter() {
+            if i > max {
+                return Err(WorldError::InvalidChunk(format!(
+                    "block palette index {i} out of range (palette {})",
+                    palette.len()
+                )));
+            }
+        }
+        Ok(SectionBlocks::Multi {
+            palette,
+            indices: Box::new(indices),
+        })
     }
 }
 
@@ -181,10 +390,8 @@ impl ChunkColumn {
     /// Flat stone platform: stone from the bottom of the world up through
     /// `ground_y` (inclusive, snapped down to a section top), air above.
     ///
-    /// Uses only `minecraft:stone` (global id 1) for solid fill so the network
-    /// palette stays on the most stable block-state id until full registry
-    /// codegen lands. `ground_y` is the highest solid block Y; player feet
-    /// should be `ground_y + 1`.
+    /// Uses only `minecraft:stone` for solid fill. `ground_y` is the highest
+    /// solid block Y; player feet should be `ground_y + 1`.
     pub fn flat(x: i32, z: i32, ground_y: i32) -> Self {
         let ground_y = snap_ground_y(ground_y);
         let solid_max_section = (ground_y.div_euclid(16)) as i8;
@@ -206,6 +413,33 @@ impl ChunkColumn {
             surface_y: ground_y + 1,
             data_version: DEFAULT_DATA_VERSION,
         }
+    }
+
+    /// Sets a block in world coordinates, creating multi-palette sections as needed.
+    ///
+    /// Returns `false` if Y is outside the column's section range.
+    pub fn set_block(&mut self, x: i32, y: i32, z: i32, state: BlockState) -> bool {
+        let section_y = y.div_euclid(16) as i8;
+        let Some(section) = self.sections.iter_mut().find(|s| s.y == section_y) else {
+            return false;
+        };
+        let lx = (x.rem_euclid(16)) as u8;
+        let ly = (y.rem_euclid(16)) as u8;
+        let lz = (z.rem_euclid(16)) as u8;
+        section.set_block(lx, ly, lz, state);
+        true
+    }
+
+    /// Gets a block in world coordinates; air if outside the column.
+    pub fn get_block(&self, x: i32, y: i32, z: i32) -> BlockState {
+        let section_y = y.div_euclid(16) as i8;
+        let Some(section) = self.sections.iter().find(|s| s.y == section_y) else {
+            return BlockState::air();
+        };
+        let lx = (x.rem_euclid(16)) as u8;
+        let ly = (y.rem_euclid(16)) as u8;
+        let lz = (z.rem_euclid(16)) as u8;
+        section.get_block(lx, ly, lz)
     }
 
     /// Encodes this column as storage NBT (named root `""`).
@@ -249,12 +483,7 @@ impl ChunkColumn {
     fn to_nbt_tag(&self) -> NbtTag {
         let mut section_tags = Vec::with_capacity(self.sections.len());
         for section in &self.sections {
-            let block_palette = NbtTag::List(vec![NbtTag::Compound(vec![(
-                "Name".to_owned(),
-                NbtTag::String(section.block.name.clone()),
-            )])]);
-            let block_states = NbtTag::Compound(vec![("palette".to_owned(), block_palette)]);
-            // Biome palette entries are bare strings in modern Anvil.
+            let block_states = section.to_block_states_nbt();
             let biome_palette = NbtTag::List(vec![NbtTag::String(section.biome.clone())]);
             let biomes = NbtTag::Compound(vec![("palette".to_owned(), biome_palette)]);
             section_tags.push(NbtTag::Compound(vec![
@@ -264,7 +493,6 @@ impl ChunkColumn {
             ]));
         }
 
-        // Heightmaps as long arrays (same packing as the network format).
         let height_value = self.surface_y.clamp(0, 511) as u16;
         let heights = [height_value; 256];
         let packed = pack_heightmap_values(&heights);
@@ -317,14 +545,15 @@ impl ChunkColumn {
                 ));
             };
             let y = find_byte(sec, "Y")?;
-            let block = parse_section_block(sec)?;
+            let blocks = match find_optional_compound(sec, "block_states") {
+                Some(states) => ChunkSection::from_block_states_nbt(states)?,
+                None => SectionBlocks::Single(BlockState::air()),
+            };
             let biome = parse_section_biome(sec)?;
-            sections.push(ChunkSection { y, block, biome });
+            sections.push(ChunkSection { y, blocks, biome });
         }
-        // Ensure bottom-to-top order.
         sections.sort_by_key(|s| s.y);
 
-        // If sections were omitted, pad to a full column of air.
         if sections.is_empty() {
             for i in 0..SECTION_COUNT {
                 sections.push(ChunkSection::air(min_section_y + i as i8, PLAINS_BIOME));
@@ -332,12 +561,15 @@ impl ChunkColumn {
         }
 
         let surface_y = parse_surface_y(root).unwrap_or_else(|| {
-            // Infer from highest non-air section.
             sections
                 .iter()
                 .rev()
-                .find(|s| !s.block.is_air())
-                .map(|s| (i32::from(s.y) + 1) * 16)
+                .find(|s| !s.is_all_air())
+                .map(|s| {
+                    // Prefer top of section when multi is unknown; flat single
+                    // still works with section top.
+                    (i32::from(s.y) + 1) * 16
+                })
                 .unwrap_or(i32::from(min_section_y) * 16)
         });
 
@@ -510,6 +742,75 @@ pub fn position_to_chunk(x: f64, z: f64) -> (i32, i32) {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Vanilla section index: `((y & 15) << 8) | ((z & 15) << 4) | (x & 15)`.
+#[inline]
+pub fn section_index(x: u8, y: u8, z: u8) -> usize {
+    ((u16::from(y & 15) << 8) | (u16::from(z & 15) << 4) | u16::from(x & 15)) as usize
+}
+
+/// Storage / network bits for a block palette of the given length (26.2 strategy).
+fn bits_for_block_storage(palette_len: usize) -> u8 {
+    if palette_len <= 1 {
+        0
+    } else {
+        // Same as network indirect: min 4 bits for 2..=16 entries.
+        bits_needed(palette_len).max(4)
+    }
+}
+
+fn palette_index(palette: &mut Vec<BlockState>, state: BlockState) -> u16 {
+    if let Some(pos) = palette.iter().position(|b| b == &state) {
+        return pos as u16;
+    }
+    let idx = palette.len() as u16;
+    palette.push(state);
+    idx
+}
+
+fn block_state_compound(block: &BlockState) -> NbtTag {
+    NbtTag::Compound(vec![(
+        "Name".to_owned(),
+        NbtTag::String(block.name.clone()),
+    )])
+}
+
+fn parse_block_palette_entry(tag: &NbtTag) -> Result<BlockState, WorldError> {
+    let NbtTag::Compound(entries) = tag else {
+        return Err(WorldError::InvalidChunk(
+            "block palette entry is not a compound".to_owned(),
+        ));
+    };
+    let name = find_string(entries, "Name")?;
+    Ok(BlockState::new(name))
+}
+
+/// Unpacks SimpleBitStorage into a fixed array of `entry_count` values.
+fn unpack_simple_bit_storage(
+    bits: u8,
+    entry_count: usize,
+    data: &[i64],
+) -> [u16; BLOCK_SECTION_SIZE] {
+    assert!(entry_count <= BLOCK_SECTION_SIZE);
+    let mut out = [0u16; BLOCK_SECTION_SIZE];
+    if bits == 0 || entry_count == 0 {
+        return out;
+    }
+    let bits_u = bits as u32;
+    let values_per_long = 64 / bits_u;
+    let mask = if bits_u == 32 {
+        u64::MAX
+    } else {
+        (1u64 << bits_u) - 1
+    };
+    for (i, slot) in out.iter_mut().enumerate().take(entry_count) {
+        let cell = i / values_per_long as usize;
+        let offset = ((i as u32) % values_per_long) * bits_u;
+        let word = data.get(cell).copied().unwrap_or(0) as u64;
+        *slot = ((word >> offset) & mask) as u16;
+    }
+    out
+}
+
 /// Snaps `ground_y` down to the top of its section so single-value sections
 /// stay valid (whole section solid or air).
 ///
@@ -537,23 +838,6 @@ fn normalize_biome(biome: impl Into<String>) -> String {
     biome
 }
 
-fn parse_section_block(sec: &[(String, NbtTag)]) -> Result<BlockState, WorldError> {
-    let Some(states) = find_optional_compound(sec, "block_states") else {
-        return Ok(BlockState::air());
-    };
-    let palette = find_list(states, "palette")?;
-    let Some(first) = palette.first() else {
-        return Ok(BlockState::air());
-    };
-    let NbtTag::Compound(entries) = first else {
-        return Err(WorldError::InvalidChunk(
-            "block palette entry is not a compound".to_owned(),
-        ));
-    };
-    let name = find_string(entries, "Name")?;
-    Ok(BlockState::new(name))
-}
-
 fn parse_section_biome(sec: &[(String, NbtTag)]) -> Result<String, WorldError> {
     let Some(biomes) = find_optional_compound(sec, "biomes") else {
         return Ok(PLAINS_BIOME.to_owned());
@@ -561,10 +845,7 @@ fn parse_section_biome(sec: &[(String, NbtTag)]) -> Result<String, WorldError> {
     let palette = find_list(biomes, "palette")?;
     match palette.first() {
         Some(NbtTag::String(name)) => Ok(normalize_biome(name.clone())),
-        Some(NbtTag::Compound(entries)) => {
-            // Some tools nest Name inside a compound.
-            find_string(entries, "Name").map(normalize_biome)
-        }
+        Some(NbtTag::Compound(entries)) => find_string(entries, "Name").map(normalize_biome),
         _ => Ok(PLAINS_BIOME.to_owned()),
     }
 }
@@ -578,7 +859,6 @@ fn parse_surface_y(root: &[(String, NbtTag)]) -> Option<i32> {
     if longs.is_empty() {
         return None;
     }
-    // Unpack first heightmap entry (9 bits).
     let bits = 9u32;
     let mask = (1u64 << bits) - 1;
     let value = (longs[0] as u64) & mask;
@@ -667,26 +947,62 @@ mod tests {
         assert_eq!(snap_ground_y(64), 63);
         assert_eq!(snap_ground_y(99), 95);
         assert_eq!(snap_ground_y(95), 95);
-        assert_eq!(snap_ground_y(0), -1); // section Y=-1 top? 0 is section 0 bottom
-        // Y=0 is bottom of section 0; snap down to section -1 top = -1
+        assert_eq!(snap_ground_y(0), -1);
         assert_eq!(snap_ground_y(-1), -1);
+    }
+
+    #[test]
+    fn section_index_matches_vanilla_yzx() {
+        assert_eq!(section_index(0, 0, 0), 0);
+        assert_eq!(section_index(1, 0, 0), 1);
+        assert_eq!(section_index(0, 0, 1), 16);
+        assert_eq!(section_index(0, 1, 0), 256);
+        assert_eq!(section_index(15, 15, 15), 4095);
     }
 
     #[test]
     fn flat_column_has_stone_and_air() {
         let col = ChunkColumn::flat(0, 0, 63);
         assert_eq!(col.sections.len(), SECTION_COUNT);
-        assert_eq!(col.sections[0].block, BlockState::stone());
-        // Section Y=0 is index 4 (MIN=-4)
+        assert_eq!(col.sections[0].single_block(), Some(&BlockState::stone()));
         let stone_section = col.sections.iter().find(|s| s.y == 0).expect("y0");
-        assert_eq!(stone_section.block, BlockState::stone());
+        assert_eq!(stone_section.single_block(), Some(&BlockState::stone()));
         let air_section = col.sections.iter().find(|s| s.y == 4).expect("y4");
-        assert!(air_section.block.is_air());
+        assert!(air_section.is_all_air());
         assert_eq!(col.surface_y, 64);
     }
 
     #[test]
-    fn storage_nbt_round_trip() {
+    fn set_block_promotes_to_multi_palette() {
+        let mut col = ChunkColumn::flat(0, 0, 63);
+        assert!(col.set_block(0, 63, 0, BlockState::dirt()));
+        assert_eq!(col.get_block(0, 63, 0), BlockState::dirt());
+        assert_eq!(col.get_block(1, 63, 0), BlockState::stone());
+        let section = col.sections.iter().find(|s| s.y == 3).expect("section 3");
+        assert!(!section.is_single_valued());
+        assert_eq!(section.non_air_count(), 4096);
+    }
+
+    #[test]
+    fn multi_palette_storage_nbt_round_trip() {
+        let mut original = ChunkColumn::flat(2, -3, 63);
+        original.set_block(2, 63, -3, BlockState::dirt());
+        original.set_block(3, 63, -3, BlockState::grass_block());
+        original.set_block(2, 64, -3, BlockState::stone()); // still air section above? 64 is air section
+        // y=64 is section 4 (air) — placing stone there.
+        assert_eq!(original.get_block(2, 63, -3), BlockState::dirt());
+        assert_eq!(original.get_block(3, 63, -3), BlockState::grass_block());
+
+        let bytes = original.encode_storage_nbt().expect("encode");
+        let decoded = ChunkColumn::decode_storage_nbt(&bytes).expect("decode");
+        assert_eq!(decoded.get_block(2, 63, -3), BlockState::dirt());
+        assert_eq!(decoded.get_block(3, 63, -3), BlockState::grass_block());
+        assert_eq!(decoded.get_block(4, 63, -3), BlockState::stone());
+        assert_eq!(decoded.get_block(2, 64, -3), BlockState::stone());
+    }
+
+    #[test]
+    fn storage_nbt_round_trip_flat() {
         let original = ChunkColumn::flat(2, -3, 63);
         let bytes = original.encode_storage_nbt().expect("encode");
         let decoded = ChunkColumn::decode_storage_nbt(&bytes).expect("decode");
@@ -695,10 +1011,95 @@ mod tests {
         assert_eq!(decoded.sections.len(), original.sections.len());
         for (a, b) in original.sections.iter().zip(decoded.sections.iter()) {
             assert_eq!(a.y, b.y);
-            assert_eq!(a.block, b.block);
+            assert_eq!(a.single_block(), b.single_block());
             assert_eq!(a.biome, b.biome);
         }
         assert_eq!(decoded.surface_y, original.surface_y);
+    }
+
+    #[test]
+    fn multi_palette_network_payload_encodes() {
+        let mut col = ChunkColumn::flat(0, 0, 63);
+        col.set_block(0, 63, 0, BlockState::dirt());
+        let payload = col.encode_network_payload(true).expect("network");
+        // Larger than pure single-value flat (multi section has 2KiB data).
+        assert!(payload.len() > 50_000);
+        assert_eq!(&payload[..8], &[0, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn multi_palette_anvil_round_trip_many_blocks() {
+        let world = temp_world("multi-anvil");
+        let mut col = ChunkColumn::flat(1, 2, 63);
+        // Sprinkle several default states on the surface section.
+        let samples = [
+            ((0, 63, 0), BlockState::dirt()),
+            ((1, 63, 0), BlockState::grass_block()),
+            ((2, 63, 0), BlockState::bedrock()),
+            ((3, 63, 0), BlockState::new("minecraft:sand")),
+            ((4, 63, 0), BlockState::new("minecraft:gravel")),
+            ((5, 63, 0), BlockState::new("minecraft:oak_log")),
+            ((0, 64, 0), BlockState::stone()), // air section → multi with air+stone
+        ];
+        for &((x, y, z), ref state) in &samples {
+            assert!(col.set_block(x, y, z, state.clone()));
+        }
+        save_chunk(&world, &col).expect("save");
+        let loaded = load_chunk(&world, 1, 2).expect("load").expect("present");
+        for &((x, y, z), ref state) in &samples {
+            assert_eq!(
+                loaded.get_block(x, y, z),
+                *state,
+                "mismatch at ({x},{y},{z})"
+            );
+        }
+        // Untouched neighbour stays stone.
+        assert_eq!(loaded.get_block(6, 63, 0), BlockState::stone());
+        let _ = std::fs::remove_dir_all(&world);
+    }
+
+    #[test]
+    fn fluid_count_tracks_water_cells() {
+        let mut section = ChunkSection::air(0, PLAINS_BIOME);
+        assert_eq!(section.fluid_count(), 0);
+        section.set_block(0, 0, 0, BlockState::new("minecraft:water"));
+        section.set_block(1, 0, 0, BlockState::new("minecraft:water"));
+        section.set_block(2, 0, 0, BlockState::stone());
+        assert_eq!(section.fluid_count(), 2);
+        assert_eq!(section.non_air_count(), 3);
+        let net = section.to_network();
+        assert_eq!(net.fluid_count, 2);
+        assert_eq!(net.non_air_count, 3);
+    }
+
+    #[test]
+    fn multi_section_network_larger_than_single() {
+        let single = ChunkColumn::flat(0, 0, 63)
+            .encode_network_payload(false)
+            .expect("single");
+        let mut multi = ChunkColumn::flat(0, 0, 63);
+        multi.set_block(0, 63, 0, BlockState::dirt());
+        let multi_bytes = multi.encode_network_payload(false).expect("multi");
+        // Multi-valued block palette adds ~2 KiB of bit storage for one section.
+        assert!(
+            multi_bytes.len() > single.len() + 1500,
+            "multi {} vs single {}",
+            multi_bytes.len(),
+            single.len()
+        );
+    }
+
+    #[test]
+    fn block_state_ids_from_report() {
+        assert_eq!(BlockState::air().network_id(), 0);
+        assert_eq!(BlockState::stone().network_id(), 1);
+        assert_eq!(BlockState::dirt().network_id(), BLOCK_STATE_DIRT);
+        assert_eq!(
+            BlockState::grass_block().network_id(),
+            BLOCK_STATE_GRASS_BLOCK
+        );
+        assert_eq!(BlockState::bedrock().network_id(), BLOCK_STATE_BEDROCK);
+        assert_eq!(BlockState::new("minecraft:oak_log").network_id(), 137);
     }
 
     #[test]
@@ -707,8 +1108,11 @@ mod tests {
         let col = ChunkColumn::flat(0, 0, 63);
         save_chunk(&world, &col).expect("save");
         let loaded = load_chunk(&world, 0, 0).expect("load").expect("present");
-        assert_eq!(loaded.sections[0].block, BlockState::stone());
-        assert!(!loaded.sections[1].block.is_air());
+        assert_eq!(
+            loaded.sections[0].single_block(),
+            Some(&BlockState::stone())
+        );
+        assert!(!loaded.sections[1].is_all_air());
         let _ = std::fs::remove_dir_all(&world);
     }
 
@@ -751,7 +1155,6 @@ mod tests {
     fn network_payload_encodes() {
         let col = ChunkColumn::flat(0, 0, 63);
         let payload = col.encode_network_payload(true).expect("network");
-        // Same ballpark as the empty-chunk smoke test (light dominates size).
         assert!(payload.len() > 50_000 && payload.len() < 80_000);
         assert_eq!(&payload[..8], &[0, 0, 0, 0, 0, 0, 0, 0]);
     }

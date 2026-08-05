@@ -8,6 +8,7 @@ mod frame;
 mod handshake;
 mod login;
 mod nbt;
+mod palette;
 mod play;
 mod status;
 
@@ -56,6 +57,12 @@ pub use login::{
 pub use nbt::{
     NbtReader, NbtTag, decode_compound_tag, decode_named_tag, encode_compound_tag,
     encode_named_tag, encode_string_tag,
+};
+pub use palette::{
+    BIOME_SECTION_SIZE, BLOCK_SECTION_SIZE, GLOBAL_PALETTE_BITS_BIOMES, GLOBAL_PALETTE_BITS_BLOCKS,
+    MAX_INDIRECT_BIOME_BITS, MAX_INDIRECT_BLOCK_BITS, NetworkPalettedContainer, PaletteError,
+    PaletteKind, bits_needed, pack_simple_bit_storage, simple_bit_storage_long_count,
+    write_paletted_container,
 };
 pub use play::{
     ABILITIES_CREATIVE, ABILITY_ALLOW_FLYING, ABILITY_CREATIVE_MODE, ABILITY_FLYING,

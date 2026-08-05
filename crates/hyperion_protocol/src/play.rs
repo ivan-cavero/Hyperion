@@ -10,8 +10,9 @@
 //! render the void.
 
 use crate::ProtocolError;
-use crate::frame::{ByteWriter, PacketCursor, encode_var_i32};
+use crate::frame::{ByteWriter, PacketCursor};
 use crate::nbt::encode_string_tag;
+use crate::palette::{NetworkPalettedContainer, write_paletted_container};
 
 // --- Clientbound (server -> client) packet IDs, Play state ---
 
@@ -507,38 +508,52 @@ fn light_section_count(block_section_count: i32) -> i32 {
 
 /// One section in the network `level_chunk_with_light` section buffer.
 ///
-/// Phase 2.1: single-valued block + biome palettes only (enough for flat /
-/// void columns). Multi-valued palettes land with real worldgen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Supports single-value and multi-value palettes (26.2 `PalettedContainer`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NetworkChunkSection {
     /// Non-air block count (0..=4096). Client uses this for culling.
     pub non_air_count: i16,
-    /// Fluid count (0 for solid/air-only sections).
+    /// Fluid count (water/lava cells; 0 for solid/air-only sections).
     pub fluid_count: i16,
-    /// Global block-state palette id filling the whole section (0 = air).
-    pub block_state_id: i32,
-    /// Global biome id filling the whole section.
-    pub biome_id: i32,
+    /// Block-state paletted container (4096 entries).
+    pub blocks: NetworkPalettedContainer,
+    /// Biome paletted container (64 entries).
+    pub biomes: NetworkPalettedContainer,
 }
 
 impl NetworkChunkSection {
-    /// All-air section with the given biome.
-    pub const fn air(biome_id: i32) -> Self {
+    /// All-air section with the given biome (single-value palettes).
+    pub fn air(biome_id: i32) -> Self {
         Self {
             non_air_count: 0,
             fluid_count: 0,
-            block_state_id: 0,
-            biome_id,
+            blocks: NetworkPalettedContainer::single(0),
+            biomes: NetworkPalettedContainer::single(biome_id),
         }
     }
 
     /// Solid single-block section (non-air count = 4096).
-    pub const fn solid(block_state_id: i32, biome_id: i32) -> Self {
+    pub fn solid(block_state_id: i32, biome_id: i32) -> Self {
         Self {
             non_air_count: 4096,
             fluid_count: 0,
-            block_state_id,
-            biome_id,
+            blocks: NetworkPalettedContainer::single(block_state_id),
+            biomes: NetworkPalettedContainer::single(biome_id),
+        }
+    }
+
+    /// Multi-palette section with explicit containers and counts.
+    pub fn with_containers(
+        non_air_count: i16,
+        fluid_count: i16,
+        blocks: NetworkPalettedContainer,
+        biomes: NetworkPalettedContainer,
+    ) -> Self {
+        Self {
+            non_air_count,
+            fluid_count,
+            blocks,
+            biomes,
         }
     }
 }
@@ -552,25 +567,13 @@ pub struct NetworkHeightmap {
     pub data: Vec<i64>,
 }
 
-/// Encodes a single-valued paletted container (BPE = 0):
-/// `bits: u8 = 0` + `value: VarInt` + **no** data array (ZeroBitStorage).
-///
-/// As of 1.21.5 the data-array length is **not** written; size is implied
-/// by bits-per-entry (0 → empty). Single-value palettes also have **no**
-/// length-prefixed palette list — just the one global palette id.
-fn write_single_valued_palette(out: &mut Vec<u8>, global_id: i32) {
-    out.push(0); // bits per entry
-    out.extend_from_slice(&encode_var_i32(global_id));
-    // ZeroBitStorage: writeFixedSizeLongArray of length 0 → nothing.
-}
-
 /// Encodes one section for protocol 776 / 26.2:
 /// `blockCount: short`, `fluidCount: short`, block palette, biome palette.
 fn write_section(out: &mut Vec<u8>, section: &NetworkChunkSection) {
     out.extend_from_slice(&section.non_air_count.to_be_bytes());
     out.extend_from_slice(&section.fluid_count.to_be_bytes());
-    write_single_valued_palette(out, section.block_state_id);
-    write_single_valued_palette(out, section.biome_id);
+    write_paletted_container(out, &section.blocks);
+    write_paletted_container(out, &section.biomes);
 }
 
 /// Writes a BitSet as `VarInt(longCount) + longCount × i64` (vanilla format).
@@ -615,14 +618,14 @@ pub fn pack_heightmap_values(heights: &[u16; 256]) -> Vec<i64> {
 }
 
 /// Encodes the payload of the clientbound `level_chunk_with_light` packet
-/// (ID 45) for an arbitrary column described by single-value sections.
+/// (ID 45) for an arbitrary column.
 ///
 /// Format verified against 26.2 (`LevelChunkSection` / `PalettedContainer` /
 /// `Heightmap.Types` bytecode + wiki Chunk format ≥ 1.21.5):
 /// - Heightmaps use **enum ids**, not resource-location strings.
 /// - Sections include **fluid count**.
-/// - Single-value palettes are `bits=0 + VarInt value` (no palette length,
-///   no data-array length).
+/// - Palettes: single (`bits=0`), indirect (palette + SimpleBitStorage), or
+///   global; data-array length is **not** written (implied by BPE).
 /// - Light section count = block sections + 2.
 pub fn encode_chunk_payload(
     chunk_x: i32,
@@ -1111,6 +1114,28 @@ mod tests {
         write_section(&mut section, &NetworkChunkSection::air(0));
         // blockCount=0, fluidCount=0, blocks: 0x00 + varint 0, biomes: 0x00 + varint 0
         assert_eq!(section, vec![0, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn multi_palette_section_wire_includes_data_array() {
+        use crate::palette::{NetworkPalettedContainer, PaletteKind};
+
+        let palette = [0i32, 1];
+        let mut indices = vec![0u16; 4096];
+        // Checkerboard a few cells.
+        indices[0] = 1;
+        indices[16] = 1;
+        let blocks =
+            NetworkPalettedContainer::from_palette_indices(PaletteKind::Blocks, &palette, &indices)
+                .expect("blocks");
+        let section =
+            NetworkChunkSection::with_containers(2, 0, blocks, NetworkPalettedContainer::single(0));
+        let mut out = Vec::new();
+        write_section(&mut out, &section);
+        // 2 shorts + bits=4 + palette(2,0,1) + 256 longs + biome single
+        assert!(out.len() > 2000, "multi section is {} bytes", out.len());
+        assert_eq!(&out[0..4], &[0, 2, 0, 0]); // non_air=2, fluid=0
+        assert_eq!(out[4], 4); // bits
     }
 
     #[test]

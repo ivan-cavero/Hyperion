@@ -11,6 +11,13 @@ description = "Hyperion world: chunks, 1:1 worldgen, world formats"
 hyperion_protocol = { path = "../hyperion_protocol" }
 flate2 = { workspace = true }
 thiserror = { workspace = true }
+# Offline codegen bin only (`gen-block-states`); not on the server hot path.
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[[bin]]
+name = "gen-block-states"
+path = "src/bin/gen_block_states.rs"
 
 [lints]
 workspace = true

@@ -8,7 +8,7 @@ Convention: `NNNN-name.md`. Status: **Accepted**, **Proposed** (open),
 
 | ADR | Title | Status |
 |-----|--------|--------|
-| 0001 | Worldgen source (1:1 vanilla) | **Proposed** — pending decision, Phase 2 deadline |
+| 0001 | Worldgen source (1:1 vanilla) | **Accepted** — own core (pure Rust), no cubiomes/Pumpkin |
 | 0002 | Plugin runtime: WASM/WIT (wasmtime) | Accepted |
 | 0003 | No JVM bridge (do not embed Java) | Accepted (core) — extended by 0006 |
 | 0004 | Multi-threaded region ticking | Accepted |

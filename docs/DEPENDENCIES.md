@@ -37,7 +37,6 @@
 | `dashmap` | Concurrent maps | MIT | xacrimon | ✅ active | Phase 3 |
 | `wasmtime` | Plugin WASM runtime | Apache-2.0 | Bytecode Alliance (18.4k★) | ✅ active | Phase 4 |
 | `mlua` | Lua scripting | MIT | mlua-rs (2.8k★) | ✅ active | Phase 4 |
-| `cubiomes` (C, FFI) | Worldgen biomes/structures reference | **MIT** | Cubitect | ✅ active | Phase 2 (optional) |
 | `bevy_ecs` | ECS (open decision) | MIT/Apache-2.0 | Bevy org | ✅ active | Phase 3 (decision) |
 
 ## What we implement ourselves (no external dependency)
@@ -46,7 +45,7 @@
 |---|---|
 | **Protocol / packets** | Minecraft-specific; codegen from JSON |
 | **NBT** | Simple public format; full performance control |
-| **Worldgen core** | 1:1 parity requires fine control; cubiomes only as reference |
+| **Worldgen core** | ADR 0001: pure Rust own core; 1:1 parity + no FFI |
 | **HCF world format** | Ultra-fast multi-threaded I/O |
 | **Simulation / region ticking** | Product core; no delegation |
 | **Plugin ABI** | Own stable contract (WIT) |
@@ -57,6 +56,7 @@
 |---|---|
 | `jni-rs` / JVM bridges | Excluded from the CORE (ADR 0003). Optional ONLY inside `hyperion_compat` (Path B, ADR 0006) |
 | `libloading` / `dlopen` | Native plugins = arbitrary code without sandbox; also cannot be unloaded on Windows. WASM solves the problem |
+| `cubiomes` (C, FFI) | Rejected by ADR 0001 — own worldgen core only; no worldgen FFI |
 | Third-party "minecraft server" crates (valence, etc.) | Hyperion is a from-scratch project: learn and control everything. Studied only as reference |
 
 ## Fallbacks (if a dependency dies)

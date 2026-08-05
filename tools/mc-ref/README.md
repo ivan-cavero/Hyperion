@@ -25,13 +25,15 @@ java "-DbundlerMainClass=net.minecraft.data.Main" `
 ```powershell
 python tools/mc-ref/gen_join_data.py
 python tools/mc-ref/gen_registry_nbt.py
+cargo run -p hyperion_world --bin gen-block-states
 ```
 
-Writes into `crates/hyperion_server/src/network/join_data/`:
-
-| File | Purpose |
+| Output | Purpose |
 |---|---|
-| `generated.rs` | Known pack id, registry entry lists, full Update Tags |
-| `registry_nbt.bin` | Fallback network NBT for every synchronized entry |
+| `crates/hyperion_server/src/network/join_data/generated.rs` | Known pack id, registry entry lists, full Update Tags |
+| `crates/hyperion_server/src/network/join_data/registry_nbt.bin` | Fallback network NBT for every synchronized entry |
+| `crates/hyperion_world/src/generated/block_states.rs` | Default block-state ids (binary-search table + constants) |
+
+`gen-block-states` is a **Rust** binary (`hyperion_world`) so version bumps stay in the same toolchain as the server. Join-data scripts remain Python until ported.
 
 Jars, `datagen/`, `classes/` and extracts are gitignored.
