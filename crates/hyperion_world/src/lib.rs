@@ -15,6 +15,7 @@ mod error;
 mod generated;
 mod gzip_util;
 mod level_dat;
+mod worldgen;
 
 pub use anvil::{
     COMPRESSION_GZIP, COMPRESSION_NONE, COMPRESSION_ZLIB, MAX_CHUNK_UNCOMPRESSED, RegionFile,
@@ -32,6 +33,10 @@ pub use error::WorldError;
 pub use generated::block_states;
 pub use gzip_util::{gzip_compress, gzip_decompress};
 pub use level_dat::{DEFAULT_DATA_VERSION, LevelMeta, read_level_dat, write_level_dat};
+pub use worldgen::{
+    SEA_LEVEL, ensure_generated_on_disk, generate_column, load_or_generate, spawn_feet_y,
+    surface_height, value_noise_2d,
+};
 
 /// World seed type used by future worldgen (u64, same range as Java `long` bits).
 pub type Seed = u64;

@@ -1,4 +1,4 @@
-//! Play spawn with a real Anvil world directory: brand + multi-chunk flat platform.
+//! Play spawn with a real Anvil world directory: brand + multi-chunk terrain.
 
 mod common;
 
@@ -53,6 +53,7 @@ async fn spawn_from_anvil_sends_brand_and_view_distance_chunks() {
         world_dir: paths.world_dir.clone(),
         view_distance,
         simulation_distance: view_distance,
+        level_seed: 42,
         spawn_y: 64,
         ..ServerConfig::default()
     };

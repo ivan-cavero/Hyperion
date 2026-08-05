@@ -29,14 +29,15 @@ in F3, and use **real creative** mode. CI green (test, clippy, fmt, audit, deny,
 server path **much faster than Paper** (RAM, disk, login, serve). Flat world is not
 full parity yet — it is the scaffold to prove the engine before real worldgen.
 
-### What we shipped recently (2.0 → 2.3)
+### What we shipped recently (2.0 → 2.4)
 
 1. **2.0** — Data dir bootstrap, storage NBT, minimal `level.dat`
 2. **Anvil region I/O** — `.mca` read/write with size caps (later: append, not full rewrite)
 3. **2.1** — Chunk column NBT, flat platform, Play serves real chunks, creative + brand
 4. **2.2** — `ChunkView` streaming on move, unload, cache center, dirty Anvil persist
-5. **Perf pass** — TCP batch flush, `FlatNetworkCache`, lazy disk budget, zlib fast
+5. **Perf pass** — TCP batch flush, lazy disk budget, zlib fast
 6. **2.3** — Multi-palette sections + generated default block-state ids (26.2); ADR 0001 own core
+7. **2.4** — Own-core height noise + surface layers (grass/dirt/stone/bedrock); seed from `level.dat`
 
 ### Honest gaps (next work)
 
@@ -143,7 +144,8 @@ Aligned with how vanilla/Paper actually win (batch I/O, never block the join pat
 - [x] **Multi-palette sections**: single + indirect + global network encode; Anvil NBT `data`; `set_block`
 - [x] **Block-state default ids**: `cargo run -p hyperion_tools --bin gen-block-states` → generated table (26.2)
 - [x] **mc-ref codegen in Rust**: `hyperion_tools` (join data, registry NBT, block states; no Python)
-- [ ] **Worldgen (own core)**: noise, biomes, surface, caves, ores, trees — block-by-block parity goal
+- [x] **Worldgen surface scaffold (2.4)**: own-core 2D height noise + stone/dirt/grass/bedrock; Anvil persist
+- [ ] **Worldgen (own core)**: biomes, caves, ores, trees, density parity — block-by-block goal
 - [ ] **Structures**: stronghold, villages, bastions… (phased parity; jigsaw last)
 - [ ] **HCF** (Hyperion Chunk Format) for ultra-fast multi-threaded load/save
 - [ ] **Light**: multi-threaded sky/block (today: full-bright sky mask only)

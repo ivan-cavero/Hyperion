@@ -5,19 +5,20 @@
 //!
 //! | Concern | Policy |
 //! |---------|--------|
-//! | RAM | One flat network template per connection; **never** hold 289×50 KiB vectors |
-//! | CPU | Clone+patch coords only; no light/NBT rebuild on send |
+//! | RAM | Encode one column at a time on send (no 289×payload batch) |
+//! | CPU | Load Anvil or generate surface column; single-value sections stay cheap |
 //! | Disk | **Not** on the send path — mark dirty, flush later (Paper-style) |
 //! | Network | Caller batches TCP writes and flushes once per batch |
 //!
-//! Goal: serve/explore faster than vanilla while staying protocol-correct.
+//! Phase 2.4: own-core height noise + surface layers (not flat template).
 
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use hyperion_protocol::ProtocolError;
-use hyperion_world::{FlatNetworkCache, ensure_flat_on_disk, position_to_chunk, snap_ground_y};
+use hyperion_world::{
+    ensure_generated_on_disk, generate_column, load_chunk, position_to_chunk, spawn_feet_y,
+};
 use tracing::debug;
 
 /// One step of view update after the player changes chunk.
@@ -41,8 +42,8 @@ pub struct ChunkView {
     /// Columns that need an Anvil write (lazy disk).
     dirty: HashSet<(i32, i32)>,
     world_dir: PathBuf,
-    /// Shared flat network template (coords patched per send).
-    network: Option<Arc<FlatNetworkCache>>,
+    /// Worldgen seed (from `level.dat` / config).
+    seed: u64,
     /// When false, only the initial void/synthetic spawn is used (unit tests).
     streaming: bool,
 }
@@ -54,11 +55,10 @@ impl ChunkView {
     pub fn spawn(
         world_dir: impl Into<PathBuf>,
         view_distance: i32,
-        spawn_y: i32,
+        seed: u64,
     ) -> Result<(Self, i32, i32), ProtocolError> {
         let world_dir = world_dir.into();
         let radius = view_distance.clamp(1, 8);
-        let ground_y = snap_ground_y(spawn_y.saturating_sub(1));
         let streaming = !world_dir.as_os_str().is_empty();
 
         if !streaming {
@@ -69,14 +69,13 @@ impl ChunkView {
                 loaded: HashSet::new(),
                 dirty: HashSet::new(),
                 world_dir,
-                network: None,
+                seed,
                 streaming: false,
             };
-            return Ok((view, spawn_y, 0));
+            return Ok((view, 64, 0));
         }
 
-        let network = Arc::new(FlatNetworkCache::new(ground_y)?);
-        let feet_y = network.surface_y;
+        let feet_y = spawn_feet_y(seed);
         let edge = 2 * radius + 1;
         let count = edge * edge;
         let mut loaded = HashSet::with_capacity(count as usize);
@@ -97,7 +96,7 @@ impl ChunkView {
             loaded,
             dirty,
             world_dir,
-            network: Some(network),
+            seed,
             streaming: true,
         };
         Ok((view, feet_y, count))
@@ -113,11 +112,32 @@ impl ChunkView {
         self.loaded.len()
     }
 
-    /// Encodes one flat column (template clone + coord patch). Cheap.
+    /// Encodes one column: load from Anvil if present, else generate from seed.
     pub fn payload(&self, chunk_x: i32, chunk_z: i32) -> Option<Vec<u8>> {
-        self.network
-            .as_ref()
-            .map(|cache| cache.payload(chunk_x, chunk_z))
+        if !self.streaming {
+            return None;
+        }
+        let column = match load_chunk(&self.world_dir, chunk_x, chunk_z) {
+            Ok(Some(col)) => col,
+            Ok(None) => generate_column(self.seed, chunk_x, chunk_z),
+            Err(error) => {
+                debug!(
+                    world = %self.world_dir.display(),
+                    chunk_x,
+                    chunk_z,
+                    %error,
+                    "chunk load failed; generating"
+                );
+                generate_column(self.seed, chunk_x, chunk_z)
+            }
+        };
+        match column.encode_network_payload(true) {
+            Ok(bytes) => Some(bytes),
+            Err(error) => {
+                debug!(chunk_x, chunk_z, %error, "chunk network encode failed");
+                None
+            }
+        }
     }
 
     /// Iterates spawn square coords in send order (z outer, x inner).
@@ -146,14 +166,10 @@ impl ChunkView {
         if max_writes == 0 || self.dirty.is_empty() {
             return 0;
         }
-        let Some(network) = self.network.as_ref() else {
-            return 0;
-        };
-        let ground_y = network.ground_y;
         let mut written = 0usize;
         let batch: Vec<(i32, i32)> = self.dirty.iter().copied().take(max_writes).collect();
         for (chunk_x, chunk_z) in batch {
-            match ensure_flat_on_disk(&self.world_dir, chunk_x, chunk_z, ground_y) {
+            match ensure_generated_on_disk(&self.world_dir, self.seed, chunk_x, chunk_z) {
                 Ok(_) => {
                     self.dirty.remove(&(chunk_x, chunk_z));
                     written += 1;
@@ -164,9 +180,8 @@ impl ChunkView {
                         chunk_x,
                         chunk_z,
                         %error,
-                        "lazy flat persist failed; will retry"
+                        "lazy terrain persist failed; will retry"
                     );
-                    // leave in dirty for retry
                 }
             }
         }
@@ -254,39 +269,34 @@ mod tests {
 
     #[test]
     fn non_streaming_spawn_is_empty() {
-        let (mut view, feet, count) = ChunkView::spawn(PathBuf::new(), 8, 64).expect("spawn");
+        let (mut view, feet, count) = ChunkView::spawn(PathBuf::new(), 8, 0).expect("spawn");
         assert!(!view.streaming_enabled());
         assert_eq!(count, 0);
         assert_eq!(feet, 64);
-        let u = view.on_position(999.0, 999.0).expect("move");
-        assert!(u.to_send.is_empty());
-        assert!(u.to_unload.is_empty());
-        assert!(u.new_center.is_none());
+        assert!(view.payload(0, 0).is_none());
+        let update = view.on_position(100.0, 100.0).expect("move");
+        assert!(update.to_send.is_empty());
     }
 
     #[test]
-    fn spawn_does_not_allocate_payload_batch() {
-        // Streaming spawn only marks coords; payloads are produced on demand.
-        let dir = std::env::temp_dir().join(format!("hyperion-view-spawn-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(dir.join("region"));
-        let (view, feet, count) = ChunkView::spawn(&dir, 2, 64).expect("spawn");
+    fn streaming_spawn_marks_dirty_and_encodes() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let world =
+            std::env::temp_dir().join(format!("hyperion-view-{}-{}", std::process::id(), nanos));
+        let _ = std::fs::remove_dir_all(&world);
+        std::fs::create_dir_all(world.join("region")).expect("mkdir");
+
+        let (mut view, feet, count) = ChunkView::spawn(&world, 2, 42).expect("spawn");
         assert!(view.streaming_enabled());
         assert_eq!(count, 25);
-        assert_eq!(feet, 64);
-        assert_eq!(view.loaded_count(), 25);
-        // Dirty set holds work for later; disk not required yet.
-        assert_eq!(view.dirty.len(), 25);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn flat_template_patches_coords() {
-        let cache = FlatNetworkCache::new(63).expect("template");
-        let a = cache.payload(0, 0);
-        let b = cache.payload(3, -2);
-        assert_eq!(&a[..4], &0i32.to_be_bytes());
-        assert_eq!(&b[..4], &3i32.to_be_bytes());
-        assert_eq!(&b[4..8], &(-2i32).to_be_bytes());
-        assert_eq!(&a[8..], &b[8..]);
+        assert_eq!(feet, spawn_feet_y(42));
+        let payload = view.payload(0, 0).expect("payload");
+        assert!(payload.len() > 50_000);
+        assert!(view.flush_dirty_budget(4) >= 1);
+        let _ = std::fs::remove_dir_all(&world);
     }
 }

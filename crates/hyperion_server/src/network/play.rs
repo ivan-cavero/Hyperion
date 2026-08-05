@@ -86,11 +86,12 @@ pub(super) async fn serve_play(
         enable_respawn_screen: true,
         dimension_type: OVERWORLD_DIMENSION_TYPE_ID,
         dimension_name: "minecraft:overworld".to_owned(),
-        hashed_seed: 0,
+        hashed_seed: config.level_seed,
         game_mode: GAME_MODE_CREATIVE,
         previous_game_mode: -1,
         is_debug: false,
-        is_flat: !config.world_dir.as_os_str().is_empty(),
+        // Own-core surface terrain (Phase 2.4), not a superflat preset.
+        is_flat: false,
         portal_cooldown: 0,
         sea_level: 63,
         online_mode: config.online_mode,
@@ -227,8 +228,9 @@ pub(super) async fn serve_play(
 
     // 12. Chunk batch — stream encode→write without holding 289×50 KiB in RAM.
     // Disk is lazy (dirty set); one TCP flush after the batch (not per chunk).
+    let world_seed = config.level_seed as u64;
     let (mut chunk_view, feet_y, initial_count) =
-        ChunkView::spawn(config.world_dir.clone(), view_distance, config.spawn_y)
+        ChunkView::spawn(config.world_dir.clone(), view_distance, world_seed)
             .map_err(ConnectionError::from)?;
     connection
         .write_frame(

@@ -11,9 +11,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::chunk::{ensure_spawn_chunk, snap_ground_y};
 use crate::error::WorldError;
-use crate::level_dat::{LevelMeta, write_level_dat};
+use crate::level_dat::{LevelMeta, read_level_dat, write_level_dat};
+use crate::worldgen::{ensure_generated_on_disk, spawn_feet_y};
 
 /// Empty JSON array body used for vanilla list files (`ops.json`, …).
 const EMPTY_JSON_ARRAY: &str = "[]\n";
@@ -102,7 +102,9 @@ pub fn prepare_data_directory(config: &BootstrapConfig) -> Result<DataPaths, Wor
         } else {
             config.level_seed
         };
-        let meta = LevelMeta::new(config.level_name.clone(), seed, config.spawn_y);
+        // Feet on generated surface at (0,0); config.spawn_y is only a fallback.
+        let feet = spawn_feet_y(seed as u64);
+        let meta = LevelMeta::new(config.level_name.clone(), seed, feet);
         write_level_dat(&level_dat, &meta)?;
     }
 
@@ -118,12 +120,11 @@ pub fn prepare_data_directory(config: &BootstrapConfig) -> Result<DataPaths, Wor
     let region_dir = world_dir.join("region");
     fs::create_dir_all(&region_dir).map_err(|source| WorldError::io(&region_dir, source))?;
 
-    // Phase 2.1: ensure spawn chunk (0,0) exists as a flat stone platform so
-    // Play can serve real Anvil data instead of a synthetic void column.
-    // `spawn_y` is feet height; ground is one block below, snapped to a
-    // section top for single-value sections.
-    let ground_y = snap_ground_y(config.spawn_y.saturating_sub(1));
-    ensure_spawn_chunk(&world_dir, ground_y)?;
+    // Phase 2.4: spawn chunk from own-core surface gen (persisted Anvil).
+    let world_seed = read_level_dat(&level_dat)
+        .map(|m| m.seed as u64)
+        .unwrap_or(config.level_seed as u64);
+    ensure_generated_on_disk(&world_dir, world_seed, 0, 0)?;
 
     let ops = root.join("ops.json");
     let whitelist = root.join("whitelist.json");
@@ -253,7 +254,8 @@ mod tests {
         let meta = read_level_dat(&paths.level_dat).expect("read level.dat");
         assert_eq!(meta.level_name, "world");
         assert_eq!(meta.seed, 99_887_766);
-        assert_eq!(meta.spawn_y, 100);
+        // Spawn Y comes from surface height at (0,0), not config.spawn_y.
+        assert_eq!(meta.spawn_y, crate::spawn_feet_y(99_887_766u64));
         assert_eq!(meta.spawn_x, 0);
         assert_eq!(meta.spawn_z, 0);
 
@@ -271,10 +273,17 @@ mod tests {
         let spawn = crate::load_chunk(&paths.world_dir, 0, 0)
             .expect("load spawn")
             .expect("spawn present");
+        // Own-core surface gen: bedrock floor, grass at heightmap for (0,0).
         assert_eq!(
-            spawn.sections[0].single_block(),
-            Some(&crate::BlockState::stone()),
-            "bottom should be solid stone"
+            spawn.get_block(0, -64, 0),
+            crate::BlockState::bedrock(),
+            "world floor is bedrock"
+        );
+        let grass_y = crate::surface_height(0, 0, 99_887_766u64);
+        assert_eq!(
+            spawn.get_block(0, grass_y, 0),
+            crate::BlockState::grass_block(),
+            "surface at (0,0) should be grass"
         );
 
         let _ = fs::remove_dir_all(&root);

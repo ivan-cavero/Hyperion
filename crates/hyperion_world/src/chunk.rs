@@ -244,6 +244,35 @@ impl ChunkSection {
         }
     }
 
+    /// Builds a section from 4096 block states in YZX order.
+    ///
+    /// Collapses to a single-valued section when every cell is identical.
+    pub fn from_blocks(y: i8, blocks: &[BlockState], biome: impl Into<String>) -> Self {
+        assert_eq!(
+            blocks.len(),
+            BLOCK_SECTION_SIZE,
+            "section requires {BLOCK_SECTION_SIZE} blocks"
+        );
+        let first = &blocks[0];
+        if blocks.iter().all(|b| b == first) {
+            return if first.is_air() {
+                Self::air(y, biome)
+            } else {
+                Self::solid(y, first.clone(), biome)
+            };
+        }
+        let mut palette: Vec<BlockState> = Vec::new();
+        let mut indices = Box::new([0u16; BLOCK_SECTION_SIZE]);
+        for (i, state) in blocks.iter().enumerate() {
+            indices[i] = palette_index(&mut palette, state.clone());
+        }
+        Self {
+            y,
+            blocks: SectionBlocks::Multi { palette, indices },
+            biome: normalize_biome(biome),
+        }
+    }
+
     /// Network encoding of this section.
     pub fn to_network(&self) -> NetworkChunkSection {
         let biome_id = PLAINS_BIOME_NETWORK_ID;
@@ -364,9 +393,12 @@ pub struct ChunkColumn {
     pub min_section_y: i8,
     /// Ordered sections from bottom to top (`min_section_y` ..).
     pub sections: Vec<ChunkSection>,
-    /// Absolute world Y of the highest solid block + 1 (feet spawn height
-    /// for a flat column), packed into heightmaps.
+    /// Absolute world Y of the highest solid block + 1 (max feet-ish height
+    /// across the column; used for spawn heuristics).
     pub surface_y: i32,
+    /// Per-column heightmap values (index = `z * 16 + x`), absolute Y of the
+    /// first empty block above the surface (vanilla WORLD_SURFACE packing).
+    pub heightmap: [u16; 256],
     /// `DataVersion` written into storage NBT.
     pub data_version: i32,
 }
@@ -377,12 +409,14 @@ impl ChunkColumn {
         let sections = (0..SECTION_COUNT)
             .map(|i| ChunkSection::air(MIN_SECTION_Y + i as i8, PLAINS_BIOME))
             .collect();
+        let surface = (i32::from(MIN_SECTION_Y) * 16).clamp(0, 511) as u16;
         Self {
             x,
             z,
             min_section_y: MIN_SECTION_Y,
             sections,
-            surface_y: MIN_SECTION_Y as i32 * 16, // no surface
+            surface_y: i32::from(MIN_SECTION_Y) * 16, // no surface
+            heightmap: [surface; 256],
             data_version: DEFAULT_DATA_VERSION,
         }
     }
@@ -405,12 +439,14 @@ impl ChunkColumn {
             };
             sections.push(section);
         }
+        let surface = (ground_y + 1).clamp(0, 511) as u16;
         Self {
             x,
             z,
             min_section_y: MIN_SECTION_Y,
             sections,
             surface_y: ground_y + 1,
+            heightmap: [surface; 256],
             data_version: DEFAULT_DATA_VERSION,
         }
     }
@@ -464,9 +500,7 @@ impl ChunkColumn {
     pub fn encode_network_payload(&self, has_sky_light: bool) -> Result<Vec<u8>, ProtocolError> {
         let sections: Vec<NetworkChunkSection> =
             self.sections.iter().map(ChunkSection::to_network).collect();
-        let height_value = self.surface_y.clamp(0, 511) as u16;
-        let heights = [height_value; 256];
-        let packed = pack_heightmap_values(&heights);
+        let packed = pack_heightmap_values(&self.heightmap);
         let heightmaps = [
             NetworkHeightmap {
                 type_id: HEIGHTMAP_WORLD_SURFACE,
@@ -493,9 +527,7 @@ impl ChunkColumn {
             ]));
         }
 
-        let height_value = self.surface_y.clamp(0, 511) as u16;
-        let heights = [height_value; 256];
-        let packed = pack_heightmap_values(&heights);
+        let packed = pack_heightmap_values(&self.heightmap);
         let heightmaps = NbtTag::Compound(vec![
             (
                 "WORLD_SURFACE".to_owned(),
@@ -560,18 +592,17 @@ impl ChunkColumn {
             }
         }
 
-        let surface_y = parse_surface_y(root).unwrap_or_else(|| {
-            sections
+        let heightmap = parse_heightmap(root).unwrap_or_else(|| {
+            let surface_y = sections
                 .iter()
                 .rev()
                 .find(|s| !s.is_all_air())
-                .map(|s| {
-                    // Prefer top of section when multi is unknown; flat single
-                    // still works with section top.
-                    (i32::from(s.y) + 1) * 16
-                })
+                .map(|s| (i32::from(s.y) + 1) * 16)
                 .unwrap_or(i32::from(min_section_y) * 16)
+                .clamp(0, 511) as u16;
+            [surface_y; 256]
         });
+        let surface_y = heightmap.iter().copied().map(i32::from).max().unwrap_or(0);
 
         Ok(Self {
             x,
@@ -579,6 +610,7 @@ impl ChunkColumn {
             min_section_y,
             sections,
             surface_y,
+            heightmap,
             data_version,
         })
     }
@@ -850,7 +882,8 @@ fn parse_section_biome(sec: &[(String, NbtTag)]) -> Result<String, WorldError> {
     }
 }
 
-fn parse_surface_y(root: &[(String, NbtTag)]) -> Option<i32> {
+/// Unpacks WORLD_SURFACE into 256 height values (compact 9-bit packing).
+fn parse_heightmap(root: &[(String, NbtTag)]) -> Option<[u16; 256]> {
     let heightmaps = find_optional_compound(root, "Heightmaps")?;
     let longs = match find_tag(heightmaps, "WORLD_SURFACE").ok()? {
         NbtTag::LongArray(data) => data,
@@ -859,10 +892,22 @@ fn parse_surface_y(root: &[(String, NbtTag)]) -> Option<i32> {
     if longs.is_empty() {
         return None;
     }
-    let bits = 9u32;
+    let bits = 9usize;
     let mask = (1u64 << bits) - 1;
-    let value = (longs[0] as u64) & mask;
-    Some(value as i32)
+    let mut out = [0u16; 256];
+    for (index, slot) in out.iter_mut().enumerate() {
+        let bit_index = index * bits;
+        let long_index = bit_index / 64;
+        let offset = bit_index % 64;
+        let mut value = (longs.get(long_index).copied().unwrap_or(0) as u64 >> offset) & mask;
+        let bits_in_first = 64 - offset;
+        if bits_in_first < bits {
+            let next = longs.get(long_index + 1).copied().unwrap_or(0) as u64;
+            value |= (next << bits_in_first) & mask;
+        }
+        *slot = value as u16;
+    }
+    Some(out)
 }
 
 fn find_tag<'a>(entries: &'a [(String, NbtTag)], name: &str) -> Result<&'a NbtTag, WorldError> {

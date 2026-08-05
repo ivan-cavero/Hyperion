@@ -133,6 +133,11 @@ async fn main() -> ExitCode {
 
     // Play loads Anvil chunks from this directory (spawn chunk created above).
     config.world_dir = data_paths.world_dir.clone();
+    // Prefer the seed persisted in level.dat (handles level-seed=0 → random once).
+    if let Ok(meta) = hyperion_world::read_level_dat(&data_paths.level_dat) {
+        config.level_seed = meta.seed;
+        config.spawn_y = meta.spawn_y;
+    }
 
     info!(
         config_path = %config_path.display(),
