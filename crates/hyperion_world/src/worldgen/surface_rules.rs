@@ -239,7 +239,11 @@ fn apply_surface_layers(column: &mut ChunkColumn, sea_level: i32, biome: &str) {
     }
 }
 
-fn recompute_heightmap(column: &mut ChunkColumn) {
+/// Rebuild heightmaps after generation steps (carvers/features/structures).
+///
+/// `WORLD_SURFACE` style: first empty block above highest non-air (includes water).
+/// Also sets `column.surface_y` to the max feet Y for spawn helpers.
+pub fn recompute_heightmap(column: &mut ChunkColumn) {
     let min_block = i32::from(MIN_SECTION_Y) * 16;
     let max_block = (i32::from(crate::chunk::MAX_SECTION_Y) + 1) * 16 - 1;
     let mut max_surface = min_block;
@@ -260,6 +264,40 @@ fn recompute_heightmap(column: &mut ChunkColumn) {
         }
     }
     column.surface_y = max_surface;
+}
+
+/// Feet Y for safe spawn at world (x,z): stand on solid (not fluid), 2 blocks air.
+///
+/// Avoids spawning inside hills when heightmap/`surface_y` are wrong or underwater
+/// seafloor is mistaken for playable ground.
+pub fn find_spawn_feet_y(column: &ChunkColumn, x: i32, z: i32) -> i32 {
+    let min_block = i32::from(MIN_SECTION_Y) * 16;
+    let max_block = (i32::from(crate::chunk::MAX_SECTION_Y) + 1) * 16 - 1;
+
+    // Highest solid with headroom.
+    for y in (min_block..=max_block - 2).rev() {
+        let b = column.get_block(x, y, z);
+        if b.is_air() || b.is_fluid() {
+            continue;
+        }
+        // Skip leaves/logs so we don't spawn on tree canopy.
+        if b.name.contains("leaves") || b.name.contains("log") || b.name.contains("vine") {
+            continue;
+        }
+        let above = column.get_block(x, y + 1, z);
+        let head = column.get_block(x, y + 2, z);
+        if (above.is_air() || above.is_fluid()) && (head.is_air() || head.is_fluid()) {
+            return (y + 1).clamp(min_block + 1, max_block - 1);
+        }
+    }
+
+    // Fallback: first air column near sea level.
+    for y in 60..=max_block - 2 {
+        if column.get_block(x, y, z).is_air() && column.get_block(x, y + 1, z).is_air() {
+            return y;
+        }
+    }
+    80
 }
 
 fn mix(x: i32, y: i32, z: i32) -> u32 {

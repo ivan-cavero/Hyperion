@@ -1,18 +1,20 @@
 //! Runtime worldgen backend selection.
 //!
-//! - **scaffold** (default): temporary Play hills — always available.
-//! - **density**: `final_density` fill from official jar noise_settings when present.
+//! - **scaffold** (default): temporary Play hills — always available / fast.
+//! - **density**: `final_density` from official jar (set `HYPERION_WORLDGEN=density`).
 //!
-//! Selection:
-//! - env `HYPERION_WORLDGEN=scaffold|density|auto`
-//! - `auto` = density if the server jar is found, else scaffold
-//! - default when unset: `scaffold` until density is fast enough for default Play
+//! Density detail (decoration cost):
+//! - default / `HYPERION_WORLDGEN_DETAIL=terrain` — terrain + surface (fast enough for join)
+//! - `HYPERION_WORLDGEN_DETAIL=full` — veins, carvers, trees, structures
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
 use crate::chunk::ChunkColumn;
-use crate::worldgen::chunk_fill::generate_column_from_density;
+use crate::worldgen::chunk_fill::{
+    GenDetail, generate_column_from_density_with_detail,
+};
 use crate::worldgen::datapack::{
     default_server_inner_jar, find_workspace_root, load_overworld_from_jar,
 };
@@ -21,6 +23,7 @@ use crate::worldgen::noise_settings::NoiseSettings;
 use crate::worldgen::scaffold::{
     generate_column as scaffold_generate, spawn_feet_y as scaffold_spawn_feet,
 };
+use crate::worldgen::surface_rules::find_spawn_feet_y;
 
 /// Which generator produces new columns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,12 +75,15 @@ pub struct ColumnGenerator {
     mode: WorldgenMode,
     seed: u64,
     density: Option<DensityBackend>,
+    /// Cache generated density columns (join streams many chunks).
+    cache: Mutex<HashMap<(i32, i32), ChunkColumn>>,
 }
 
 struct DensityBackend {
     seed: i64,
     settings: NoiseSettings,
     lib: Mutex<DensityLibrary>,
+    detail: GenDetail,
 }
 
 impl ColumnGenerator {
@@ -106,6 +112,7 @@ impl ColumnGenerator {
             mode,
             seed,
             density,
+            cache: Mutex::new(HashMap::new()),
         }
     }
 
@@ -117,22 +124,64 @@ impl ColumnGenerator {
         self.seed
     }
 
-    /// Feet Y at world origin for player spawn.
+    /// Feet Y at world origin for player spawn (safe solid + headroom).
     pub fn spawn_feet_y(&self) -> i32 {
-        match &self.density {
-            Some(d) => match d.column(0, 0) {
-                Ok(col) => col.surface_y.max(64),
-                Err(_) => scaffold_spawn_feet(self.seed),
-            },
-            None => scaffold_spawn_feet(self.seed),
+        let Some(d) = &self.density else {
+            return scaffold_spawn_feet(self.seed);
+        };
+        let col = self.generate_column(0, 0);
+        // Prefer origin; if ocean, search nearby land for a solid stand.
+        let mut best = find_spawn_feet_y(&col, 0, 0);
+        let b0 = col.get_block(0, best - 1, 0);
+        if b0.is_fluid() || best < d.settings.sea_level {
+            for radius in (8..=48).step_by(8) {
+                for (dx, dz) in [
+                    (radius, 0i32),
+                    (-radius, 0),
+                    (0, radius),
+                    (0, -radius),
+                    (radius, radius),
+                    (-radius, radius),
+                ] {
+                    let cx = dx.div_euclid(16);
+                    let cz = dz.div_euclid(16);
+                    let probe = if cx == 0 && cz == 0 {
+                        col.clone()
+                    } else {
+                        self.generate_column(cx, cz)
+                    };
+                    let y = find_spawn_feet_y(&probe, dx, dz);
+                    let ground = probe.get_block(dx, y - 1, dz);
+                    if !ground.is_fluid() && !ground.is_air() && y >= d.settings.sea_level {
+                        return y;
+                    }
+                    best = best.max(y);
+                }
+            }
         }
+        // Never bury the player under the sea floor height.
+        best.max(d.settings.sea_level + 1).min(320)
     }
 
-    /// Generate one column (does not touch disk).
+    /// Generate one column (does not touch disk). Cached for density mode.
     pub fn generate_column(&self, chunk_x: i32, chunk_z: i32) -> ChunkColumn {
         if let Some(d) = &self.density {
+            if let Ok(cache) = self.cache.lock()
+                && let Some(col) = cache.get(&(chunk_x, chunk_z))
+            {
+                return col.clone();
+            }
             match d.column(chunk_x, chunk_z) {
-                Ok(col) => return col,
+                Ok(col) => {
+                    if let Ok(mut cache) = self.cache.lock() {
+                        // Cap cache so RAM stays bounded during long sessions.
+                        if cache.len() > 512 {
+                            cache.clear();
+                        }
+                        cache.insert((chunk_x, chunk_z), col.clone());
+                    }
+                    return col;
+                }
                 Err(err) => {
                     eprintln!(
                         "density fill failed chunk {chunk_x},{chunk_z}: {err}; scaffold fallback"
@@ -170,17 +219,30 @@ impl DensityBackend {
             .lib
             .lock()
             .map_err(|_| "density library lock poisoned".to_owned())?;
-        generate_column_from_density(self.seed, chunk_x, chunk_z, &self.settings, &mut lib)
+        generate_column_from_density_with_detail(
+            self.seed,
+            chunk_x,
+            chunk_z,
+            &self.settings,
+            &mut lib,
+            self.detail,
+        )
     }
 }
 
 fn load_density(seed: i64) -> Result<DensityBackend, String> {
     let jar = resolve_server_jar().ok_or_else(|| "server jar not found".to_owned())?;
     let (settings, lib) = load_overworld_from_jar(&jar, seed)?;
+    let detail = GenDetail::from_env();
+    eprintln!(
+        "hyperion density worldgen ready (detail={detail:?}); jar={}",
+        jar.display()
+    );
     Ok(DensityBackend {
         seed,
         settings,
         lib: Mutex::new(lib),
+        detail,
     })
 }
 
@@ -195,6 +257,8 @@ mod tests {
         let col = generator.generate_column(0, 0);
         assert_eq!(col.sections.len(), 24);
         assert!(col.surface_y > 0);
+        let feet = generator.spawn_feet_y();
+        assert!(feet > 0 && feet < 320, "feet={feet}");
     }
 
     #[test]
@@ -206,10 +270,22 @@ mod tests {
         assert_eq!(generator.mode(), WorldgenMode::Density);
         let col = generator.generate_column(0, 0);
         assert_eq!(col.sections.len(), 24);
-        // Bedrock floor from surface pass
         assert_eq!(
             col.get_block(0, -64, 0),
             crate::chunk::BlockState::bedrock()
         );
+        let feet = generator.spawn_feet_y();
+        // Must not be buried in solid.
+        let ground = col.get_block(0, feet - 1, 0);
+        let head = col.get_block(0, feet, 0);
+        assert!(
+            !head.name.contains("stone") && !head.name.contains("dirt"),
+            "spawn feet={feet} inside solid head={}",
+            head.name
+        );
+        let _ = ground;
+        // Cache hit
+        let col2 = generator.generate_column(0, 0);
+        assert_eq!(col.surface_y, col2.surface_y);
     }
 }

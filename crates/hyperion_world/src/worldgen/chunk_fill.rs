@@ -23,11 +23,35 @@ use crate::worldgen::features::apply_vegetation;
 use crate::worldgen::noise_settings::NoiseSettings;
 use crate::worldgen::ore_veins::{apply_ore_veins, apply_scatter_ores};
 use crate::worldgen::structures::apply_structures;
-use crate::worldgen::surface_rules::apply_basic_surface;
+use crate::worldgen::surface_rules::{apply_basic_surface, recompute_heightmap};
 
-/// Generates one column (JE-ish status order):
-/// density (+ aquifers) → ore veins → biome → surface → carvers →
-/// ores scatter → vegetation → structures.
+/// How much decoration to run after base terrain (Play needs speed).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GenDetail {
+    /// Terrain + surface + biomes only (fast join).
+    Terrain,
+    /// Full decoration (veins, carvers, ores, trees, structures).
+    Full,
+}
+
+impl GenDetail {
+    pub fn from_env() -> Self {
+        match std::env::var("HYPERION_WORLDGEN_DETAIL")
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "full" | "all" => Self::Full,
+            // Default density Play path: terrain-only for join speed.
+            // Set HYPERION_WORLDGEN_DETAIL=full for veins/carvers/trees/structures.
+            _ => Self::Terrain,
+        }
+    }
+}
+
+/// Generates one column (JE-ish status order).
+///
+/// `detail` controls expensive decoration. Use [`GenDetail::Terrain`] for Play.
 pub fn generate_column_from_density(
     seed: i64,
     chunk_x: i32,
@@ -35,10 +59,31 @@ pub fn generate_column_from_density(
     settings: &NoiseSettings,
     lib: &mut DensityLibrary,
 ) -> Result<ChunkColumn, String> {
+    generate_column_from_density_with_detail(
+        seed,
+        chunk_x,
+        chunk_z,
+        settings,
+        lib,
+        GenDetail::from_env(),
+    )
+}
+
+/// Like [`generate_column_from_density`] with explicit detail level.
+pub fn generate_column_from_density_with_detail(
+    seed: i64,
+    chunk_x: i32,
+    chunk_z: i32,
+    settings: &NoiseSettings,
+    lib: &mut DensityLibrary,
+    detail: GenDetail,
+) -> Result<ChunkColumn, String> {
     let mut column = generate_column_density_only(seed, chunk_x, chunk_z, settings, lib)?;
 
-    // Large copper/iron veins (noise OreVeinifier).
-    apply_ore_veins(&mut column, seed, settings, lib)?;
+    if detail == GenDetail::Full {
+        // Large copper/iron veins (expensive — Full only).
+        apply_ore_veins(&mut column, seed, settings, lib)?;
+    }
 
     // Biome at chunk center surface band (quart-aligned block coords).
     let biome = if settings.has_climate_router() {
@@ -69,20 +114,20 @@ pub fn generate_column_from_density(
         &biome,
     );
 
-    // CARVERS
-    apply_overworld_carvers(
-        &mut column,
-        seed,
-        settings.sea_level,
-        settings.noise.min_y,
-    );
+    if detail == GenDetail::Full {
+        apply_overworld_carvers(
+            &mut column,
+            seed,
+            settings.sea_level,
+            settings.noise.min_y,
+        );
+        apply_scatter_ores(&mut column, seed, settings.noise.min_y);
+        apply_vegetation(&mut column, seed, &biome, settings.sea_level);
+        apply_structures(&mut column, seed, &biome, settings.sea_level);
+    }
 
-    // FEATURES — ores, trees, plants
-    apply_scatter_ores(&mut column, seed, settings.noise.min_y);
-    apply_vegetation(&mut column, seed, &biome, settings.sea_level);
-
-    // STRUCTURES — stubs (portal, village house, pyramid, shipwreck, igloo)
-    apply_structures(&mut column, seed, &biome, settings.sea_level);
+    // Always refresh heightmaps after the last mutation (spawn + client collision).
+    recompute_heightmap(&mut column);
 
     Ok(column)
 }

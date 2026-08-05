@@ -3,7 +3,7 @@
 //! Uses router densities `vein_toggle`, `vein_ridged`, `vein_gap` when present.
 //! Applied to solid stone/deepslate after density fill, before surface rules.
 
-use crate::chunk::{BlockState, ChunkColumn, MIN_SECTION_Y};
+use crate::chunk::{BlockState, ChunkColumn};
 use crate::worldgen::density::{DensityContext, DensityFunction, DensityLibrary};
 use crate::worldgen::noise_settings::NoiseSettings;
 use crate::worldgen::random::{PositionalRandomFactory, RandomSource};
@@ -71,8 +71,8 @@ pub fn apply_ore_veins(
     let gap = lib.resolve(gap_v)?;
     let factory = PositionalRandomFactory::from_world_seed(seed);
 
-    let min_block = i32::from(MIN_SECTION_Y) * 16;
-    let max_block = (i32::from(crate::chunk::MAX_SECTION_Y) + 1) * 16 - 1;
+    // Only copper (0..=50) and iron (-60..=-8) bands — skip empty sky/deep void.
+    let bands = [(-60i32, -8i32), (0i32, 50i32)];
     let base_x = column.x * 16;
     let base_z = column.z * 16;
 
@@ -80,15 +80,17 @@ pub fn apply_ore_veins(
         for x in 0..16 {
             let wx = base_x + x;
             let wz = base_z + z;
-            for y in min_block..=max_block {
-                let b = column.get_block(wx, y, wz);
-                if !is_vein_host(&b) {
-                    continue;
-                }
-                if let Some(placed) =
-                    compute_vein_block(wx, y, wz, &toggle, &ridged, &gap, &factory, lib)?
-                {
-                    column.set_block(wx, y, wz, placed);
+            for &(y0, y1) in &bands {
+                for y in y0..=y1 {
+                    let b = column.get_block(wx, y, wz);
+                    if !is_vein_host(&b) {
+                        continue;
+                    }
+                    if let Some(placed) =
+                        compute_vein_block(wx, y, wz, &toggle, &ridged, &gap, &factory, lib)?
+                    {
+                        column.set_block(wx, y, wz, placed);
+                    }
                 }
             }
         }

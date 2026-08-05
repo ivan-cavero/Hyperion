@@ -40,7 +40,10 @@ pub use scaffold::{
 };
 
 // Default / 1:1 math surface.
-pub use chunk_fill::{generate_column_density_only, generate_column_from_density};
+pub use chunk_fill::{
+    GenDetail, generate_column_density_only, generate_column_from_density,
+    generate_column_from_density_with_detail,
+};
 pub use datapack::{default_server_inner_jar, find_workspace_root, load_overworld_from_jar};
 pub use density::{
     DensityContext, DensityFunction, DensityLibrary, NoiseRegistry, y_clamped_gradient,
@@ -53,4 +56,4 @@ pub use random::{
     LegacyRandom, PositionalRandomFactory, RandomSource, Seed128, XoroshiroRandom,
     seed_from_hash_of, upgrade_seed_to_128bit, world_seed_to_xoroshiro,
 };
-pub use surface_rules::apply_basic_surface;
+pub use surface_rules::{apply_basic_surface, find_spawn_feet_y, recompute_heightmap};

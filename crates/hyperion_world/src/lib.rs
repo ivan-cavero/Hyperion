@@ -35,12 +35,13 @@ pub use generated::block_states;
 pub use gzip_util::{gzip_compress, gzip_decompress};
 pub use level_dat::{DEFAULT_DATA_VERSION, LevelMeta, read_level_dat, write_level_dat};
 pub use worldgen::{
-    ColumnGenerator, DensityContext, DensityFunction, DensityLibrary, LegacyRandom,
+    ColumnGenerator, DensityContext, DensityFunction, DensityLibrary, GenDetail, LegacyRandom,
     NoiseParameters, NoiseRegistry, NoiseSettings, NoiseSize, NormalNoise, PerlinNoise,
     PositionalRandomFactory, RandomSource, SEA_LEVEL, Seed128, WorldgenMode, XoroshiroRandom,
-    apply_basic_surface, default_server_inner_jar, ensure_generated_on_disk, find_workspace_root,
-    generate_column, generate_column_density_only, generate_column_from_density, load_or_generate,
-    load_overworld_from_jar, resolve_server_jar, seed_from_hash_of, spawn_feet_y, surface_height,
+    apply_basic_surface, default_server_inner_jar, ensure_generated_on_disk, find_spawn_feet_y,
+    find_workspace_root, generate_column, generate_column_density_only, generate_column_from_density,
+    generate_column_from_density_with_detail, load_or_generate, load_overworld_from_jar,
+    recompute_heightmap, resolve_server_jar, seed_from_hash_of, spawn_feet_y, surface_height,
     upgrade_seed_to_128bit, value_noise_2d, world_seed_to_xoroshiro, y_clamped_gradient,
 };
 

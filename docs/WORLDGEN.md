@@ -87,12 +87,14 @@ Until a layer is green: say **pre-alpha / scaffold**, never “full vanilla worl
 
 ## Play integration
 
-- Default: scaffold columns (`HYPERION_WORLDGEN` unset or `scaffold`).
-- Density path: set `HYPERION_WORLDGEN=density` (or `auto` if the jar is found).
-  Optional `HYPERION_SERVER_JAR` points at `server-inner-*.jar`.
-- Density fill uses cell-grid sampling + basic surface; not 1:1 yet.
-- Flip the **default** to density when spawn latency is acceptable and a smoke
-  golden for seed + chunk (0,0) is green.
+- **Default: scaffold** (fast hills). Safe for join.
+- Density: `HYPERION_WORLDGEN=density` (+ optional `HYPERION_SERVER_JAR`).
+- Density **detail** (performance):
+  - default / `HYPERION_WORLDGEN_DETAIL=terrain` — terrain + surface only (recommended for Play)
+  - `HYPERION_WORLDGEN_DETAIL=full` — veins, carvers, trees, structures (slow)
+- Spawn uses solid ground + headroom (searches nearby if origin is ocean).
+- Columns are cached so re-streaming the same chunk is cheap.
+- Not 1:1 with vanilla yet.
 
 ## Regenerating data extracts
 
