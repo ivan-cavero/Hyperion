@@ -32,7 +32,7 @@ pub fn generate_column_from_density(
     lib: &mut DensityLibrary,
 ) -> Result<ChunkColumn, String> {
     let mut column = generate_column_density_only(seed, chunk_x, chunk_z, settings, lib)?;
-    apply_basic_surface(&mut column, settings.sea_level, settings.noise.min_y);
+    apply_basic_surface(&mut column, settings.sea_level, settings.noise.min_y, seed);
     Ok(column)
 }
 

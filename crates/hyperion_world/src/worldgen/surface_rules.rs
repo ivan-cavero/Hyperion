@@ -10,34 +10,50 @@
 //! yet every JSON node in `noise_settings.surface_rule`.
 
 use crate::chunk::{BlockState, ChunkColumn, MIN_SECTION_Y};
+use crate::worldgen::random::{PositionalRandomFactory, RandomSource};
 
 /// Y at and below which solid stone becomes deepslate (overworld convention).
 const DEEPSLATE_Y: i32 = 0;
 
 /// Apply post-density surface dressing in place.
-pub fn apply_basic_surface(column: &mut ChunkColumn, sea_level: i32, min_y: i32) {
-    apply_bedrock_floor(column, min_y);
+///
+/// `seed` drives the bedrock vertical_gradient (JE `minecraft:bedrock_floor`).
+pub fn apply_basic_surface(column: &mut ChunkColumn, sea_level: i32, min_y: i32, seed: i64) {
+    apply_bedrock_floor(column, min_y, seed);
     apply_deepslate_band(column, min_y);
     apply_surface_layers(column, sea_level);
     recompute_heightmap(column);
 }
 
-fn apply_bedrock_floor(column: &mut ChunkColumn, min_y: i32) {
-    // Official overworld: bedrock band roughly min_y .. min_y+5 with a gradient.
+/// JE-ish `vertical_gradient` for bedrock:
+/// always true at `min_y`, always false at `min_y+5`+, linear probability in between.
+fn apply_bedrock_floor(column: &mut ChunkColumn, min_y: i32, seed: i64) {
+    let factory = PositionalRandomFactory::from_world_seed(seed);
+    // Surface rule uses random_name "minecraft:bedrock_floor".
+    let mut floor_rng = factory.from_hash_of("minecraft:bedrock_floor");
+    // Derive a stable salt stream for (x,z,y) without full WorldgenRandom.at yet:
+    // mix factory long with position for each cell.
+    let salt = floor_rng.next_long();
+
     for z in 0..16 {
         for x in 0..16 {
             let wx = column.x * 16 + x;
             let wz = column.z * 16 + z;
             for dy in 0..5 {
                 let y = min_y + dy;
-                // Deterministic pseudo-random fade (placeholder for vertical_gradient).
-                let hash = mix(wx, y, wz);
-                let threshold = dy as u32;
-                if hash % 5 <= threshold {
+                if dy == 0 {
+                    column.set_block(wx, y, wz, BlockState::bedrock());
+                    continue;
+                }
+                // Probability of bedrock decreases with height (true_at 0 → false_at 5).
+                // p = 1 - dy/5
+                let p = 1.0 - f64::from(dy) / 5.0;
+                let h = mix64(salt, wx, y, wz);
+                let unit = (h as f64) / (u64::MAX as f64);
+                if unit < p {
                     column.set_block(wx, y, wz, BlockState::bedrock());
                 }
             }
-            column.set_block(wx, min_y, wz, BlockState::bedrock());
         }
     }
 }
@@ -143,11 +159,19 @@ fn recompute_heightmap(column: &mut ChunkColumn) {
 }
 
 fn mix(x: i32, y: i32, z: i32) -> u32 {
-    let mut n = x as u32;
-    n = n.wrapping_mul(0x1F1F_1F1F).wrapping_add(z as u32);
-    n ^= (y as u32).wrapping_mul(0x9E37_79B9);
-    n ^= n >> 16;
-    n.wrapping_mul(0x85EB_CA6B)
+    mix64(0, x, y, z) as u32
+}
+
+fn mix64(salt: i64, x: i32, y: i32, z: i32) -> u64 {
+    let mut n = salt as u64;
+    n = n
+        .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        .wrapping_add(x as u64);
+    n ^= (y as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    n = n
+        .wrapping_mul(0x94D0_49BB_1331_11EB)
+        .wrapping_add(z as u64);
+    n ^ (n >> 33)
 }
 
 #[cfg(test)]
