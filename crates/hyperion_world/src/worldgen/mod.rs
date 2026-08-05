@@ -10,6 +10,7 @@
 //!
 //! Policy: `docs/WORLDGEN.md`.
 
+pub mod blended_noise;
 pub mod chunk_fill;
 pub mod datapack;
 pub mod density;
@@ -19,6 +20,7 @@ pub mod normal_noise;
 pub mod perlin_noise;
 pub mod random;
 pub mod scaffold;
+pub mod spline;
 
 // Play still uses scaffold until the density-based column fill is ready.
 pub use scaffold::{

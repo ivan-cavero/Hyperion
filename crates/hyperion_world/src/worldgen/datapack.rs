@@ -110,9 +110,45 @@ mod tests {
         );
         // Try resolving final_density — may fail until spline/old_blended land.
         let mut lib = lib;
-        match settings.final_density(&mut lib) {
-            Ok(_) => eprintln!("overworld final_density resolved OK"),
-            Err(e) => eprintln!("overworld final_density not fully resolvable yet: {e}"),
+        let fd = settings
+            .final_density(&mut lib)
+            .expect("overworld final_density should resolve");
+        let deep = fd
+            .compute(
+                crate::worldgen::density::DensityContext::new(0, -32, 0),
+                &mut lib.noises,
+            )
+            .expect("sample deep");
+        let high = fd
+            .compute(
+                crate::worldgen::density::DensityContext::new(0, 200, 0),
+                &mut lib.noises,
+            )
+            .expect("sample high");
+        eprintln!("final_density deep={deep} high={high}");
+        // In a real overworld, deep should tend solid (>0) more often than sky.
+        // We only assert the graph is evaluable and finite for now (parity later).
+        assert!(deep.is_finite() && high.is_finite());
+    }
+
+    #[test]
+    fn overworld_density_fill_smoke_if_jar_present() {
+        use crate::worldgen::chunk_fill::generate_column_from_density;
+
+        let Some(root) = find_workspace_root() else {
+            return;
+        };
+        let jar = default_server_inner_jar(&root);
+        if !jar.is_file() {
+            return;
         }
+        let (settings, mut lib) = load_overworld_from_jar(&jar, 1).expect("load");
+        // Small fill of chunk 0,0 — may not match official yet (noise tables WIP)
+        // but must complete without error.
+        let col = generate_column_from_density(1, 0, 0, &settings, &mut lib).expect("fill");
+        assert_eq!(col.sections.len(), 24);
+        // Network encode must succeed.
+        let payload = col.encode_network_payload(true).expect("network");
+        assert!(payload.len() > 50_000);
     }
 }

@@ -5,16 +5,18 @@
 //! density math separate from chunk I/O; resolve datapack IDs into a graph;
 //! sample `final_density` per block when filling.
 //!
-//! **Parity**: arithmetic / gradients / range_choice / noise / shifts are in
-//! progress. Spline, old_blended_noise, full interpolation caches, aquifers
-//! are still incomplete — do not claim overworld 1:1 yet.
+//! **Parity**: arithmetic / gradients / range_choice / noise / shifts / spline /
+//! old_blended_noise are landing. Full overworld still needs aquifers, surface
+//! rules, and golden diffs — do not claim 1:1 yet.
 
 use std::collections::HashMap;
 
 use serde_json::Value;
 
+use crate::worldgen::blended_noise::{BlendedNoise, BlendedNoiseParams};
 use crate::worldgen::normal_noise::{NoiseParameters, NormalNoise};
 use crate::worldgen::random::{RandomSource, XoroshiroRandom};
+use crate::worldgen::spline::CubicSpline;
 
 /// Evaluation context for a density sample.
 #[derive(Debug, Clone, Copy)]
@@ -35,6 +37,7 @@ impl DensityContext {
 pub struct NoiseRegistry {
     params: HashMap<String, NoiseParameters>,
     instances: HashMap<String, NormalNoise>,
+    blended: HashMap<String, BlendedNoise>,
     seed: i64,
 }
 
@@ -43,6 +46,7 @@ impl NoiseRegistry {
         Self {
             params: HashMap::new(),
             instances: HashMap::new(),
+            blended: HashMap::new(),
             seed,
         }
     }
@@ -77,6 +81,22 @@ impl NoiseRegistry {
             self.instances.insert(id.to_owned(), noise);
         }
         Ok(self.instances.get(id).expect("just inserted"))
+    }
+
+    fn blended(&mut self, params: BlendedNoiseParams) -> &BlendedNoise {
+        let key = format!(
+            "{:?}|{:?}|{:?}|{:?}|{:?}",
+            params.xz_scale,
+            params.y_scale,
+            params.xz_factor,
+            params.y_factor,
+            params.smear_scale_multiplier
+        );
+        if !self.blended.contains_key(&key) {
+            let noise = BlendedNoise::create(self.seed, params);
+            self.blended.insert(key.clone(), noise);
+        }
+        self.blended.get(&key).expect("just inserted")
     }
 }
 
@@ -234,6 +254,23 @@ pub enum DensityFunction {
     ShiftB {
         noise_id: String,
     },
+    /// `minecraft:spline` — cubic multipoint spline.
+    Spline(CubicSpline),
+    /// `minecraft:old_blended_noise` — legacy blended 3D noise.
+    OldBlendedNoise(BlendedNoiseParams),
+    /// `minecraft:find_top_surface` — scan column for density > 0.
+    FindTopSurface {
+        density: Box<DensityFunction>,
+        upper_bound: Box<DensityFunction>,
+        lower_bound: i32,
+        cell_height: i32,
+    },
+    /// `minecraft:interval_select` — pick a function by thresholds on input.
+    IntervalSelect {
+        input: Box<DensityFunction>,
+        thresholds: Vec<f64>,
+        functions: Vec<DensityFunction>,
+    },
     Unsupported {
         type_name: String,
     },
@@ -353,6 +390,50 @@ impl DensityFunction {
                 );
                 n * 4.0
             }
+            Self::Spline(spline) => spline.compute(ctx, noises)?,
+            Self::OldBlendedNoise(params) => {
+                let p = *params;
+                noises
+                    .blended(p)
+                    .sample(f64::from(ctx.x), f64::from(ctx.y), f64::from(ctx.z))
+            }
+            Self::FindTopSurface {
+                density,
+                upper_bound,
+                lower_bound,
+                cell_height,
+            } => {
+                let mut y = upper_bound.compute(ctx, noises)? as i32;
+                let step = (*cell_height).max(1);
+                let lower = *lower_bound;
+                while y >= lower {
+                    let d = density.compute(DensityContext::new(ctx.x, y, ctx.z), noises)?;
+                    if d > 0.0 {
+                        return Ok(f64::from(y));
+                    }
+                    y -= step;
+                }
+                f64::from(lower)
+            }
+            Self::IntervalSelect {
+                input,
+                thresholds,
+                functions,
+            } => {
+                let v = input.compute(ctx, noises)?;
+                // thresholds.len() == functions.len() - 1
+                let mut idx = functions.len() - 1;
+                for (i, &t) in thresholds.iter().enumerate() {
+                    if v < t {
+                        idx = i;
+                        break;
+                    }
+                }
+                functions
+                    .get(idx)
+                    .ok_or_else(|| "interval_select empty functions".to_owned())?
+                    .compute(ctx, noises)?
+            }
             Self::Unsupported { type_name } => {
                 return Err(format!("density type not implemented: {type_name}"));
             }
@@ -469,6 +550,53 @@ fn parse_typed(
                 .ok_or_else(|| "shift_b missing noise".to_owned())?;
             Ok(ShiftB {
                 noise_id: normalize_id(noise_id),
+            })
+        }
+        "spline" => {
+            let spline_json = map
+                .get("spline")
+                .ok_or_else(|| "spline missing spline field".to_owned())?;
+            Ok(Spline(CubicSpline::from_json(spline_json, lib)?))
+        }
+        "old_blended_noise" => Ok(OldBlendedNoise(BlendedNoiseParams {
+            xz_scale: map_f64(map, "xz_scale")?,
+            y_scale: map_f64(map, "y_scale")?,
+            xz_factor: map_f64(map, "xz_factor")?,
+            y_factor: map_f64(map, "y_factor")?,
+            smear_scale_multiplier: map_f64(map, "smear_scale_multiplier")?,
+        })),
+        "find_top_surface" => Ok(FindTopSurface {
+            density: Box::new(arg(map, "density", lib)?),
+            upper_bound: Box::new(arg(map, "upper_bound", lib)?),
+            lower_bound: map_i32(map, "lower_bound")?,
+            cell_height: map_i32(map, "cell_height").unwrap_or(1),
+        }),
+        "interval_select" => {
+            let thresholds = map
+                .get("thresholds")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| "interval_select missing thresholds".to_owned())?
+                .iter()
+                .map(|v| v.as_f64().ok_or_else(|| format!("bad threshold {v}")))
+                .collect::<Result<Vec<_>, _>>()?;
+            let functions = map
+                .get("functions")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| "interval_select missing functions".to_owned())?
+                .iter()
+                .map(|v| lib.resolve(v))
+                .collect::<Result<Vec<_>, _>>()?;
+            if functions.len() != thresholds.len() + 1 {
+                return Err(format!(
+                    "interval_select expects functions = thresholds+1 (got {} / {})",
+                    functions.len(),
+                    thresholds.len()
+                ));
+            }
+            Ok(IntervalSelect {
+                input: Box::new(arg(map, "input", lib)?),
+                thresholds,
+                functions,
             })
         }
         other => Ok(Unsupported {

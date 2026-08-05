@@ -63,8 +63,9 @@ Declare “matches official server” **only** when golden diffs are green.
 | Xoroshiro / Legacy RNG | 🔄 foundation |
 | ImprovedNoise / Perlin / NormalNoise | 🔄 foundation |
 | Density AST + library + string refs | 🔄 expanding |
-| `NoiseSettings` + fill column from `final_density` | 🔄 works for simple routers (flat gradient); overworld graph not fully resolved yet |
-| Full overworld `final_density` (spline, old_blended_noise, …) | ⬜ |
+| `NoiseSettings` + fill from `final_density` | 🔄 simple routers correct; overworld **resolves + samples + fills** |
+| Overworld graph types (spline, old_blended, interval_select, …) | 🔄 implemented enough to evaluate/fill; noise tables not golden-matched yet |
+| Golden parity vs official server dump | ⬜ next
 | Surface rules | ⬜ |
 | Multi-noise biomes | ⬜ |
 | Aquifers / carvers / ores | ⬜ |
