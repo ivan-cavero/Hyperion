@@ -1,8 +1,7 @@
 //! Fill a chunk column from a density function (`final_density` rule).
 //!
 //! Official rule (wiki / noise settings): if `final_density(x,y,z) > 0` place
-//! `default_block`, else air (aquifers later place fluid). Surface rules run
-//! afterward — not yet implemented here.
+//! `default_block`, else air/fluid. Then surface rules dress the top.
 
 use hyperion_protocol::BLOCK_SECTION_SIZE;
 
@@ -13,12 +12,13 @@ use crate::chunk::{
 use crate::level_dat::DEFAULT_DATA_VERSION;
 use crate::worldgen::density::{DensityContext, DensityLibrary};
 use crate::worldgen::noise_settings::NoiseSettings;
+use crate::worldgen::surface_rules::apply_basic_surface;
 
-/// Generates one column by sampling `final_density` at every block.
+/// Generates one column by sampling `final_density` at every block, then a
+/// basic surface pass (bedrock + grass/dirt).
 ///
-/// Does **not** claim full overworld parity until the density graph (including
-/// spline / old_blended_noise / aquifers / surface rules) is complete. Use with
-/// simple routers (e.g. y_clamped_gradient flat world) for correctness tests.
+/// Not full official parity until golden dumps match (noise tables + full
+/// surface_rule tree + aquifers).
 pub fn generate_column_from_density(
     seed: i64,
     chunk_x: i32,
@@ -26,7 +26,20 @@ pub fn generate_column_from_density(
     settings: &NoiseSettings,
     lib: &mut DensityLibrary,
 ) -> Result<ChunkColumn, String> {
-    let _ = seed; // seed is already in lib.noises
+    let mut column = generate_column_density_only(seed, chunk_x, chunk_z, settings, lib)?;
+    apply_basic_surface(&mut column, settings.sea_level, settings.noise.min_y);
+    Ok(column)
+}
+
+/// Density fill only (no surface rules) — useful for testing the density graph.
+pub fn generate_column_density_only(
+    seed: i64,
+    chunk_x: i32,
+    chunk_z: i32,
+    settings: &NoiseSettings,
+    lib: &mut DensityLibrary,
+) -> Result<ChunkColumn, String> {
+    let _ = seed;
     let final_density = settings.final_density(lib)?;
     let min_y = settings.noise.min_y;
     let max_y = settings.noise.max_y();
@@ -37,13 +50,10 @@ pub fn generate_column_from_density(
     let base_x = chunk_x * 16;
     let base_z = chunk_z * 16;
 
-    // heightmap: first empty above solid surface
     let mut heightmap = [0u16; 256];
     let mut max_surface = min_y;
 
     let mut sections = Vec::with_capacity(SECTION_COUNT);
-    // We still use Hyperion overworld section count (-4..19). Clamp density sampling
-    // to noise height range.
     for i in 0..SECTION_COUNT {
         let section_y = MIN_SECTION_Y + i as i8;
         let y0 = i32::from(section_y) * 16;
@@ -77,7 +87,6 @@ pub fn generate_column_from_density(
         sections.push(ChunkSection::from_blocks(section_y, &cells, PLAINS_BIOME));
     }
 
-    // Heightmaps from filled column
     for lz in 0..16 {
         for lx in 0..16 {
             let mut top = min_y;
@@ -144,14 +153,22 @@ mod tests {
     fn flat_density_fill_has_stone_bottom_and_air_top() {
         let settings = flat_settings();
         let mut lib = DensityLibrary::new(0);
-        let col = generate_column_from_density(0, 0, 0, &settings, &mut lib).unwrap();
-        // Bottom of world solid
+        // Density-only: no surface pass.
+        let col = generate_column_density_only(0, 0, 0, &settings, &mut lib).unwrap();
         assert_eq!(col.get_block(0, -64, 0), BlockState::stone());
-        // High air
         assert!(col.get_block(0, 200, 0).is_air());
-        // Cross-over around mid gradient
         let mid = col.get_block(0, 128, 0);
-        // density at y=128: halfway from 1 to -1 ≈ 0 → not solid (≤0)
         assert!(mid.is_air() || mid == BlockState::new("minecraft:water"));
+    }
+
+    #[test]
+    fn flat_density_with_surface_has_bedrock_floor() {
+        let settings = flat_settings();
+        let mut lib = DensityLibrary::new(0);
+        let col = generate_column_from_density(0, 0, 0, &settings, &mut lib).unwrap();
+        assert_eq!(col.get_block(0, -64, 0), BlockState::bedrock());
+        // Zero-crossing of y_clamped_gradient(-64→320, 1→-1): density>0 for y<128.
+        // Top solid ≈127 ≥ sea → grass.
+        assert_eq!(col.get_block(0, 127, 0), BlockState::grass_block());
     }
 }

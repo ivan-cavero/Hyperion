@@ -1,0 +1,167 @@
+//! Minimal surface-rule pass after density fill.
+//!
+//! Full surface_rule trees (biome, stone_depth, noise, …) land layer by layer.
+//! This module implements the pieces needed for a recognizable overworld top:
+//! - bedrock floor gradient near `min_y`
+//! - grass + dirt + stone cap on the highest solid blocks of each column
+//!
+//! That matches the *role* of surface rules after `final_density` (wiki), not
+//! yet every JSON node in `noise_settings.surface_rule`.
+
+use crate::chunk::{BlockState, ChunkColumn, MIN_SECTION_Y};
+
+/// Apply post-density surface dressing in place.
+pub fn apply_basic_surface(column: &mut ChunkColumn, sea_level: i32, min_y: i32) {
+    apply_bedrock_floor(column, min_y);
+    apply_surface_layers(column, sea_level);
+    recompute_heightmap(column);
+}
+
+fn apply_bedrock_floor(column: &mut ChunkColumn, min_y: i32) {
+    // Official overworld: bedrock band roughly min_y .. min_y+5 with a gradient.
+    // We solid-fill min_y and min_y+1 as bedrock; higher gradient randomness later.
+    for z in 0..16 {
+        for x in 0..16 {
+            let wx = column.x * 16 + x;
+            let wz = column.z * 16 + z;
+            for dy in 0..5 {
+                let y = min_y + dy;
+                // Deterministic pseudo-random fade (placeholder for vertical_gradient).
+                let hash = mix(wx, y, wz);
+                let threshold = dy as u32;
+                if hash % 5 <= threshold {
+                    column.set_block(wx, y, wz, BlockState::bedrock());
+                }
+            }
+            column.set_block(wx, min_y, wz, BlockState::bedrock());
+        }
+    }
+}
+
+fn apply_surface_layers(column: &mut ChunkColumn, sea_level: i32) {
+    let min_block = i32::from(MIN_SECTION_Y) * 16;
+    let max_block = (i32::from(crate::chunk::MAX_SECTION_Y) + 1) * 16 - 1;
+    for z in 0..16 {
+        for x in 0..16 {
+            let wx = column.x * 16 + x;
+            let wz = column.z * 16 + z;
+            // Find top non-air (ignore fluid for surface — treat water as empty for grass).
+            let mut top = None;
+            for y in (min_block..=max_block).rev() {
+                let b = column.get_block(wx, y, wz);
+                if !b.is_air() && !b.is_fluid() {
+                    top = Some(y);
+                    break;
+                }
+            }
+            let Some(surface_y) = top else {
+                continue;
+            };
+            // Underwater: dirt/gravel-ish → keep dirt; above sea: grass.
+            if surface_y >= sea_level - 1 {
+                column.set_block(wx, surface_y, wz, BlockState::grass_block());
+                for d in 1..=3 {
+                    let y = surface_y - d;
+                    if y <= min_block {
+                        break;
+                    }
+                    let b = column.get_block(wx, y, wz);
+                    if b.is_air() || b.is_fluid() {
+                        break;
+                    }
+                    if b == BlockState::stone() || b == BlockState::dirt() {
+                        column.set_block(wx, y, wz, BlockState::dirt());
+                    }
+                }
+            } else {
+                // Seafloor: dirt top
+                column.set_block(wx, surface_y, wz, BlockState::dirt());
+                for d in 1..=2 {
+                    let y = surface_y - d;
+                    if y <= min_block {
+                        break;
+                    }
+                    let b = column.get_block(wx, y, wz);
+                    if !b.is_air() && !b.is_fluid() {
+                        column.set_block(wx, y, wz, BlockState::dirt());
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn recompute_heightmap(column: &mut ChunkColumn) {
+    let min_block = i32::from(MIN_SECTION_Y) * 16;
+    let max_block = (i32::from(crate::chunk::MAX_SECTION_Y) + 1) * 16 - 1;
+    let mut max_surface = min_block;
+    for z in 0..16 {
+        for x in 0..16 {
+            let wx = column.x * 16 + x;
+            let wz = column.z * 16 + z;
+            let mut top = min_block;
+            for y in (min_block..=max_block).rev() {
+                if !column.get_block(wx, y, wz).is_air() {
+                    top = y;
+                    break;
+                }
+            }
+            let surface = (top + 1).clamp(0, 511) as u16;
+            column.heightmap[(z * 16 + x) as usize] = surface;
+            max_surface = max_surface.max(top + 1);
+        }
+    }
+    column.surface_y = max_surface;
+}
+
+fn mix(x: i32, y: i32, z: i32) -> u32 {
+    let mut n = x as u32;
+    n = n.wrapping_mul(0x1F1F_1F1F).wrapping_add(z as u32);
+    n ^= (y as u32).wrapping_mul(0x9E37_79B9);
+    n ^= n >> 16;
+    n.wrapping_mul(0x85EB_CA6B)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::worldgen::chunk_fill::generate_column_from_density;
+    use crate::worldgen::density::DensityLibrary;
+    use crate::worldgen::noise_settings::NoiseSettings;
+
+    #[test]
+    fn flat_density_plus_surface_has_grass() {
+        // Gradient to y=320 so solid top is ~128 (above sea 63) → grass, not seafloor dirt.
+        let v = serde_json::json!({
+            "sea_level": 63,
+            "aquifers_enabled": false,
+            "ore_veins_enabled": false,
+            "legacy_random_source": false,
+            "default_block": { "Name": "minecraft:stone" },
+            "default_fluid": { "Name": "minecraft:water", "Properties": { "level": "0" } },
+            "noise": { "min_y": -64, "height": 384, "size_horizontal": 1, "size_vertical": 2 },
+            "noise_router": {
+                "final_density": {
+                    "type": "minecraft:y_clamped_gradient",
+                    "from_y": -64,
+                    "to_y": 320,
+                    "from_value": 1.0,
+                    "to_value": -1.0
+                }
+            }
+        });
+        let settings = NoiseSettings::from_json(&v).unwrap();
+        let mut lib = DensityLibrary::new(0);
+        // generate_column_from_density already runs apply_basic_surface.
+        let col = generate_column_from_density(0, 0, 0, &settings, &mut lib).unwrap();
+        assert_eq!(col.get_block(0, -64, 0), BlockState::bedrock());
+        let mut found_grass = false;
+        for y in -64..200 {
+            if col.get_block(0, y, 0) == BlockState::grass_block() {
+                found_grass = true;
+                break;
+            }
+        }
+        assert!(found_grass, "expected grass after surface pass");
+    }
+}

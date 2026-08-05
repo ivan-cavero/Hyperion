@@ -14,6 +14,8 @@ pub mod blended_noise;
 pub mod chunk_fill;
 pub mod datapack;
 pub mod density;
+#[cfg(test)]
+pub mod golden;
 pub mod improved_noise;
 pub mod noise_settings;
 pub mod normal_noise;
@@ -21,6 +23,7 @@ pub mod perlin_noise;
 pub mod random;
 pub mod scaffold;
 pub mod spline;
+pub mod surface_rules;
 
 // Play still uses scaffold until the density-based column fill is ready.
 pub use scaffold::{
@@ -29,7 +32,7 @@ pub use scaffold::{
 };
 
 // Default / 1:1 math surface.
-pub use chunk_fill::generate_column_from_density;
+pub use chunk_fill::{generate_column_density_only, generate_column_from_density};
 pub use datapack::{default_server_inner_jar, find_workspace_root, load_overworld_from_jar};
 pub use density::{
     DensityContext, DensityFunction, DensityLibrary, NoiseRegistry, y_clamped_gradient,
@@ -38,3 +41,4 @@ pub use noise_settings::{NoiseSettings, NoiseSize};
 pub use normal_noise::{NoiseParameters, NormalNoise};
 pub use perlin_noise::PerlinNoise;
 pub use random::{LegacyRandom, RandomSource, XoroshiroRandom, world_seed_to_xoroshiro};
+pub use surface_rules::apply_basic_surface;

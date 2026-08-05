@@ -1,8 +1,10 @@
 //! `old_blended_noise` — legacy blended 3D noise used by base terrain.
 //!
-//! Deterministic reimplementation of the sampling structure used by Java
-//! Edition `BlendedNoise` (main + limit perlin stacks). Exact octave amplitudes
-//! are refined against official dumps as golden tests land.
+//! Structure follows Java Edition `BlendedNoise`:
+//! - one shared RNG stream creates min-limit, max-limit, then main Perlin stacks
+//! - sample min/max at scaled coords; map main into [0,1] and lerp between them
+//!
+//! Octave tables still refined against official golden dumps.
 
 use crate::worldgen::perlin_noise::PerlinNoise;
 use crate::worldgen::random::{RandomSource, XoroshiroRandom};
@@ -28,20 +30,19 @@ pub struct BlendedNoise {
 
 impl BlendedNoise {
     pub fn create(seed: i64, params: BlendedNoiseParams) -> Self {
-        // Three independent streams (mirrors forking three noise generators).
-        let mut r0 = XoroshiroRandom::from_seed(seed);
-        let mut r1 = XoroshiroRandom::from_seed(seed ^ 0x4F1B_B2C3_D5E6_F708);
-        let mut r2 = XoroshiroRandom::from_seed(seed ^ 0x1A2B_3C4D_5E6F_7081);
-        // Legacy blended noise used 16 octaves for main and 8 for limits in older
-        // code; modern paths still sample multi-octave fields. Amplitudes of 1
-        // across octaves approximate the shape; golden tests will pin exact tables.
-        let amps_main: Vec<f64> = (0..16).map(|i| 1.0 / 2f64.powi(i)).collect();
-        let amps_limit: Vec<f64> = (0..8).map(|i| 1.0 / 2f64.powi(i)).collect();
+        // Official path: one RandomSource, construct min → max → main in order.
+        let mut random = XoroshiroRandom::from_seed(seed);
+        // Octaves at indices [-15..=0] for limits (16), [-7..=0] for main (8).
+        let amps_limit = vec![1.0; 16];
+        let amps_main = vec![1.0; 8];
+        let min_limit = PerlinNoise::create(&mut random as &mut dyn RandomSource, -15, &amps_limit);
+        let max_limit = PerlinNoise::create(&mut random as &mut dyn RandomSource, -15, &amps_limit);
+        let main = PerlinNoise::create(&mut random as &mut dyn RandomSource, -7, &amps_main);
         Self {
             params,
-            min_limit: PerlinNoise::create(&mut r0 as &mut dyn RandomSource, -15, &amps_limit),
-            max_limit: PerlinNoise::create(&mut r1 as &mut dyn RandomSource, -15, &amps_limit),
-            main: PerlinNoise::create(&mut r2 as &mut dyn RandomSource, -15, &amps_main),
+            min_limit,
+            max_limit,
+            main,
         }
     }
 
@@ -51,25 +52,29 @@ impl BlendedNoise {
         let scaled_y = y * p.y_scale;
         let scaled_z = z * p.xz_scale;
 
+        // Limit noise uses factor-scaled coordinates.
         let limit_x = scaled_x / p.xz_factor;
         let limit_y = scaled_y / p.y_factor;
         let limit_z = scaled_z / p.xz_factor;
 
+        // Smear stretches Y for main noise (caves / overhangs).
+        let smear_y = scaled_y * p.smear_scale_multiplier;
+
         let min = self.min_limit.get_value(limit_x, limit_y, limit_z) / 512.0;
         let max = self.max_limit.get_value(limit_x, limit_y, limit_z) / 512.0;
 
-        let smear = p.smear_scale_multiplier;
-        let main =
-            self.main
-                .get_value(scaled_x / 128.0, scaled_y / 128.0 * smear, scaled_z / 128.0)
-                / 64.0;
+        // Main noise drives the blend factor (historical /512 or /20 paths exist;
+        // /20 + 0.5 then clamp is the common JE mapping for the lerp weight).
+        let main = self.main.get_value(scaled_x, smear_y, scaled_z) / 20.0 + 0.5;
+        let t = main.clamp(0.0, 1.0);
 
-        // Blend main into [min, max] band (structure of BlendedNoise).
-        let lo = min.min(max);
-        let hi = min.max(max);
-        let t = ((main - lo) / (hi - lo + 1e-9)).clamp(0.0, 1.0);
-        lo + t * (hi - lo)
+        clamped_lerp(min, max, t)
     }
+}
+
+#[inline]
+fn clamped_lerp(a: f64, b: f64, t: f64) -> f64 {
+    a + (b - a) * t.clamp(0.0, 1.0)
 }
 
 #[cfg(test)]
@@ -89,5 +94,25 @@ mod tests {
         let b = BlendedNoise::create(42, p);
         assert_eq!(a.sample(1.0, 2.0, 3.0), b.sample(1.0, 2.0, 3.0));
         assert_ne!(a.sample(1.0, 2.0, 3.0), a.sample(4.0, 5.0, 6.0));
+    }
+
+    #[test]
+    fn sample_is_finite() {
+        let p = BlendedNoiseParams {
+            xz_scale: 0.25,
+            y_scale: 0.125,
+            xz_factor: 80.0,
+            y_factor: 160.0,
+            smear_scale_multiplier: 8.0,
+        };
+        let n = BlendedNoise::create(1, p);
+        for z in -2..2 {
+            for y in -2..2 {
+                for x in -2..2 {
+                    let v = n.sample(f64::from(x), f64::from(y), f64::from(z));
+                    assert!(v.is_finite(), "non-finite at {x},{y},{z}: {v}");
+                }
+            }
+        }
     }
 }
