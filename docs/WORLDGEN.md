@@ -73,7 +73,7 @@ Declare “matches official server” **only** when golden diffs are green.
 | Surface rules | 🔄 basic pass + JSON tree interpreter (vertical_gradient/block/sequence; biomes fail-closed) |
 | Multi-noise biomes | 🔄 climate sample + expanded parameter table (~40 points; not full builder yet) |
 | Aquifers / carvers / ores | 🔄 SimpleAquifer + carvers + OreVeinifier (Cu/Fe) + scatter ores; full features later |
-| Features / structures | ⬜ |
+| Features / structures | 🔄 trees+plants by biome; structure stubs (portal/village/pyramid/ship/igloo) |
 | CI golden chunks vs official dump | ⬜ Phase 2 exit |
 
 ## How we prove 1:1

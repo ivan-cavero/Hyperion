@@ -19,14 +19,15 @@ use crate::worldgen::aquifers::SimpleAquifer;
 use crate::worldgen::carvers::apply_overworld_carvers;
 use crate::worldgen::climate::ClimateSampler;
 use crate::worldgen::density::{DensityContext, DensityFunction, DensityLibrary};
+use crate::worldgen::features::apply_vegetation;
 use crate::worldgen::noise_settings::NoiseSettings;
 use crate::worldgen::ore_veins::{apply_ore_veins, apply_scatter_ores};
+use crate::worldgen::structures::apply_structures;
 use crate::worldgen::surface_rules::apply_basic_surface;
 
-/// Generates one column:
-/// density (+ aquifers) → ore veins → biome → surface → carvers → scatter ores.
-///
-/// Rough JE chunk status order; not full feature pipeline yet.
+/// Generates one column (JE-ish status order):
+/// density (+ aquifers) → ore veins → biome → surface → carvers →
+/// ores scatter → vegetation → structures.
 pub fn generate_column_from_density(
     seed: i64,
     chunk_x: i32,
@@ -68,7 +69,7 @@ pub fn generate_column_from_density(
         &biome,
     );
 
-    // CARVERS status — worm caves + rare canyons (simplified JE carvers).
+    // CARVERS
     apply_overworld_carvers(
         &mut column,
         seed,
@@ -76,8 +77,12 @@ pub fn generate_column_from_density(
         settings.noise.min_y,
     );
 
-    // FEATURES (ores only) — scatter common ores after carvers.
+    // FEATURES — ores, trees, plants
     apply_scatter_ores(&mut column, seed, settings.noise.min_y);
+    apply_vegetation(&mut column, seed, &biome, settings.sea_level);
+
+    // STRUCTURES — stubs (portal, village house, pyramid, shipwreck, igloo)
+    apply_structures(&mut column, seed, &biome, settings.sea_level);
 
     Ok(column)
 }

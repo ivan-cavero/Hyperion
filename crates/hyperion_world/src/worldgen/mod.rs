@@ -18,6 +18,7 @@ pub mod climate;
 pub mod datapack;
 pub mod density;
 pub mod engine;
+pub mod features;
 #[cfg(test)]
 pub mod golden;
 pub mod improved_noise;
@@ -28,6 +29,7 @@ pub mod perlin_noise;
 pub mod random;
 pub mod scaffold;
 pub mod spline;
+pub mod structures;
 pub mod surface_rule_json;
 pub mod surface_rules;
 
