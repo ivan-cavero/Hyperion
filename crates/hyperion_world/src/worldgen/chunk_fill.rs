@@ -52,7 +52,10 @@ pub fn generate_column_density_only(
     let cell_h = settings.noise.cell_height();
     let solid = BlockState::new(settings.default_block.clone());
     let fluid = BlockState::new(settings.default_fluid.clone());
+    let lava = BlockState::new("minecraft:lava");
     let sea = settings.sea_level;
+    // Rough aquifer floor: deep open space becomes lava (full AquiferSampler later).
+    let lava_y = -54;
 
     let base_x = chunk_x * 16;
     let base_z = chunk_z * 16;
@@ -89,7 +92,11 @@ pub fn generate_column_density_only(
                         if d > 0.0 {
                             solid.clone()
                         } else if world_y < sea {
-                            fluid.clone()
+                            if world_y < lava_y {
+                                lava.clone()
+                            } else {
+                                fluid.clone()
+                            }
                         } else {
                             BlockState::air()
                         }

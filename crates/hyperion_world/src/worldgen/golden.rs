@@ -16,6 +16,7 @@ pub struct ColumnFingerprint {
     pub dirt: u32,
     pub grass: u32,
     pub water: u32,
+    pub lava: u32,
     /// Sampled block names at fixed world positions (x,y,z relative to chunk origin).
     pub samples: Vec<String>,
 }
@@ -29,6 +30,7 @@ impl ColumnFingerprint {
         let mut dirt = 0u32;
         let mut grass = 0u32;
         let mut water = 0u32;
+        let mut lava = 0u32;
         for z in 0..16 {
             for x in 0..16 {
                 for y in -64..320 {
@@ -44,6 +46,7 @@ impl ColumnFingerprint {
                         "minecraft:dirt" => dirt += 1,
                         "minecraft:grass_block" => grass += 1,
                         "minecraft:water" => water += 1,
+                        "minecraft:lava" => lava += 1,
                         _ => {}
                     }
                 }
@@ -72,6 +75,7 @@ impl ColumnFingerprint {
             dirt,
             grass,
             water,
+            lava,
             samples,
         }
     }
@@ -127,6 +131,9 @@ mod tests {
         assert!(fp.deepslate > 0, "deepslate band below y=0 expected");
         assert_eq!(fp.samples[0], "minecraft:bedrock");
         assert_eq!(fp.samples[1], "minecraft:deepslate");
+        // Pin exact Hyperion-stable counts for the flat router (update if gen changes).
+        assert_eq!(fp.grass, 256);
+        assert_eq!(fp.surface_y, 128);
     }
 
     #[test]
