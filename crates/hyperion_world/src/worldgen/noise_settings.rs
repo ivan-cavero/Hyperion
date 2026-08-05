@@ -21,6 +21,17 @@ impl NoiseSize {
     pub fn max_y(self) -> i32 {
         self.min_y + self.height
     }
+
+    /// Block width of one noise cell (`1 << size_horizontal`). Matches JE
+    /// `NoiseSettings.getCellWidth()` for the modern noise chunk path.
+    pub fn cell_width(self) -> i32 {
+        1 << self.size_horizontal.clamp(0, 4)
+    }
+
+    /// Block height of one noise cell (`1 << size_vertical`).
+    pub fn cell_height(self) -> i32 {
+        1 << self.size_vertical.clamp(0, 4)
+    }
 }
 
 /// Subset of noise_settings needed for terrain fill.
@@ -132,6 +143,8 @@ mod tests {
         let s = NoiseSettings::from_json(&v).unwrap();
         assert_eq!(s.sea_level, 63);
         assert_eq!(s.noise.min_y, -64);
+        assert_eq!(s.noise.cell_width(), 2);
+        assert_eq!(s.noise.cell_height(), 4);
         let mut lib = DensityLibrary::new(0);
         let fd = s.final_density(&mut lib).unwrap();
         // Y=-64 solid, Y=320 air-ish
