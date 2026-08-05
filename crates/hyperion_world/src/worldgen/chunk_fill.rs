@@ -20,13 +20,13 @@ use crate::worldgen::carvers::apply_overworld_carvers;
 use crate::worldgen::climate::ClimateSampler;
 use crate::worldgen::density::{DensityContext, DensityFunction, DensityLibrary};
 use crate::worldgen::noise_settings::NoiseSettings;
+use crate::worldgen::ore_veins::{apply_ore_veins, apply_scatter_ores};
 use crate::worldgen::surface_rules::apply_basic_surface;
 
-/// Generates one column by sampling `final_density` on the noise cell grid,
-/// multi-noise biome (when router has climate axes), surface pass, then carvers.
+/// Generates one column:
+/// density (+ aquifers) → ore veins → biome → surface → carvers → scatter ores.
 ///
-/// Pipeline slot order matches JE chunk status: noise → surface → carvers.
-/// Not full official parity until golden dumps match.
+/// Rough JE chunk status order; not full feature pipeline yet.
 pub fn generate_column_from_density(
     seed: i64,
     chunk_x: i32,
@@ -35,6 +35,9 @@ pub fn generate_column_from_density(
     lib: &mut DensityLibrary,
 ) -> Result<ChunkColumn, String> {
     let mut column = generate_column_density_only(seed, chunk_x, chunk_z, settings, lib)?;
+
+    // Large copper/iron veins (noise OreVeinifier).
+    apply_ore_veins(&mut column, seed, settings, lib)?;
 
     // Biome at chunk center surface band (quart-aligned block coords).
     let biome = if settings.has_climate_router() {
@@ -72,6 +75,9 @@ pub fn generate_column_from_density(
         settings.sea_level,
         settings.noise.min_y,
     );
+
+    // FEATURES (ores only) — scatter common ores after carvers.
+    apply_scatter_ores(&mut column, seed, settings.noise.min_y);
 
     Ok(column)
 }

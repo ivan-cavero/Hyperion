@@ -167,7 +167,16 @@ impl DensityLibrary {
             Value::Number(n) => Ok(DensityFunction::Constant(
                 n.as_f64().ok_or_else(|| format!("bad number {n}"))?,
             )),
-            Value::String(s) => self.resolve_id(s),
+            Value::String(s) => {
+                // Built-in coordinate density (JE `DensityFunctions.y` etc.).
+                match normalize_id(s).as_str() {
+                    "minecraft:y" | "y" => return Ok(DensityFunction::Y),
+                    "minecraft:x" | "x" => return Ok(DensityFunction::X),
+                    "minecraft:z" | "z" => return Ok(DensityFunction::Z),
+                    _ => {}
+                }
+                self.resolve_id(s)
+            }
             Value::Object(map) => {
                 if let Some(type_v) = map.get("type") {
                     let type_name = type_v
@@ -227,6 +236,12 @@ fn normalize_id(id: &str) -> String {
 #[derive(Debug, Clone)]
 pub enum DensityFunction {
     Constant(f64),
+    /// Block X coordinate as density (JE built-in).
+    X,
+    /// Block Y coordinate as density (JE built-in `minecraft:y`).
+    Y,
+    /// Block Z coordinate as density.
+    Z,
     YClampedGradient {
         from_y: i32,
         to_y: i32,
@@ -318,6 +333,9 @@ impl DensityFunction {
     pub fn compute(&self, ctx: DensityContext, noises: &mut NoiseRegistry) -> Result<f64, String> {
         Ok(match self {
             Self::Constant(v) => *v,
+            Self::X => f64::from(ctx.x),
+            Self::Y => f64::from(ctx.y),
+            Self::Z => f64::from(ctx.z),
             Self::YClampedGradient {
                 from_y,
                 to_y,
@@ -488,6 +506,9 @@ fn parse_typed(
                 .ok_or_else(|| "constant missing argument".to_owned())?;
             Ok(Constant(v))
         }
+        "y" => Ok(Y),
+        "x" => Ok(X),
+        "z" => Ok(Z),
         "y_clamped_gradient" => Ok(YClampedGradient {
             from_y: map_i32(map, "from_y")?,
             to_y: map_i32(map, "to_y")?,

@@ -302,6 +302,25 @@ impl PositionalRandomFactory {
         let s = seed as u64;
         XoroshiroRandom::from_state(s ^ self.seed_lo, s ^ self.seed_hi)
     }
+
+    /// `at(x, y, z)` — JE positional fork using `Mth.getSeed`.
+    pub fn at(&self, x: i32, y: i32, z: i32) -> XoroshiroRandom {
+        let s = block_seed(x, y, z) as u64;
+        XoroshiroRandom::from_state(s ^ self.seed_lo, self.seed_hi)
+    }
+}
+
+/// JE `Mth.getSeed(x, y, z)`.
+pub fn block_seed(x: i32, y: i32, z: i32) -> i64 {
+    let mut l = i64::from(x)
+        .wrapping_mul(3_129_871)
+        ^ i64::from(z).wrapping_mul(116_129_781)
+        ^ i64::from(y);
+    l = l
+        .wrapping_mul(l)
+        .wrapping_mul(42_317_861)
+        .wrapping_add(l.wrapping_mul(11));
+    l >> 16
 }
 
 /// Fork a positional random the way vanilla hashes block/seed pairs for features.

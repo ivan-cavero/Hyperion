@@ -23,6 +23,7 @@ pub mod golden;
 pub mod improved_noise;
 pub mod noise_settings;
 pub mod normal_noise;
+pub mod ore_veins;
 pub mod perlin_noise;
 pub mod random;
 pub mod scaffold;
