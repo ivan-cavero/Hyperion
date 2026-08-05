@@ -18,11 +18,71 @@ const DEEPSLATE_Y: i32 = 0;
 /// Apply post-density surface dressing in place.
 ///
 /// `seed` drives the bedrock vertical_gradient (JE `minecraft:bedrock_floor`).
-pub fn apply_basic_surface(column: &mut ChunkColumn, sea_level: i32, min_y: i32, seed: i64) {
+/// Optional datapack `surface_rule` is evaluated for known nodes (fail-closed).
+pub fn apply_basic_surface(
+    column: &mut ChunkColumn,
+    sea_level: i32,
+    min_y: i32,
+    seed: i64,
+    surface_rule: Option<&serde_json::Value>,
+) {
     apply_bedrock_floor(column, min_y, seed);
     apply_deepslate_band(column, min_y);
     apply_surface_layers(column, sea_level);
+    if let Some(rule) = surface_rule {
+        apply_json_surface_pass(column, sea_level, min_y, seed, rule);
+    }
     recompute_heightmap(column);
+}
+
+/// Second pass: try datapack surface_rule on solid cells (bedrock / simple leaves).
+fn apply_json_surface_pass(
+    column: &mut ChunkColumn,
+    sea_level: i32,
+    min_y: i32,
+    seed: i64,
+    rule: &serde_json::Value,
+) {
+    use crate::worldgen::surface_rule_json::{SurfaceCtx, eval_rule};
+
+    let min_block = i32::from(MIN_SECTION_Y) * 16;
+    let max_block = (i32::from(crate::chunk::MAX_SECTION_Y) + 1) * 16 - 1;
+    for z in 0..16 {
+        for x in 0..16 {
+            let wx = column.x * 16 + x;
+            let wz = column.z * 16 + z;
+            let mut surface_y = min_block;
+            for y in (min_block..=max_block).rev() {
+                let b = column.get_block(wx, y, wz);
+                if !b.is_air() && !b.is_fluid() {
+                    surface_y = y;
+                    break;
+                }
+            }
+            for y in min_block..=surface_y {
+                let b = column.get_block(wx, y, wz);
+                if b.is_air() || b.is_fluid() {
+                    continue;
+                }
+                let ctx = SurfaceCtx {
+                    x: wx,
+                    y,
+                    z: wz,
+                    min_y,
+                    sea_level,
+                    surface_y,
+                    seed,
+                };
+                if let Some(placed) = eval_rule(rule, &ctx) {
+                    // Only override with bedrock from JSON for now (avoid wiping grass
+                    // until biome conditions work). Full rule tree later.
+                    if placed == BlockState::bedrock() {
+                        column.set_block(wx, y, wz, placed);
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// JE-ish `vertical_gradient` for bedrock:

@@ -46,6 +46,8 @@ pub struct NoiseSettings {
     pub noise: NoiseSize,
     /// Raw `noise_router` object (each field is a density JSON value or id).
     pub noise_router: Value,
+    /// Raw `surface_rule` tree (optional — overworld has a large one).
+    pub surface_rule: Option<Value>,
 }
 
 impl NoiseSettings {
@@ -96,6 +98,7 @@ impl NoiseSettings {
                 .get("noise_router")
                 .cloned()
                 .ok_or_else(|| "missing noise_router".to_owned())?,
+            surface_rule: value.get("surface_rule").cloned(),
         })
     }
 

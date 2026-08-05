@@ -24,6 +24,7 @@ pub mod perlin_noise;
 pub mod random;
 pub mod scaffold;
 pub mod spline;
+pub mod surface_rule_json;
 pub mod surface_rules;
 
 // Play still uses scaffold until the density-based column fill is ready.

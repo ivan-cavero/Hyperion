@@ -70,7 +70,7 @@ Declare “matches official server” **only** when golden diffs are green.
 | `NoiseSettings` + fill from `final_density` | 🔄 cell-grid sample + trilinear; overworld resolves + fills |
 | Overworld graph types (spline, old_blended, interval_select, …) | 🔄 implemented enough to evaluate/fill; noise tables not golden-matched yet |
 | Golden parity vs official server dump | ⬜ Hyperion-stable fingerprints only (need official dumps) |
-| Surface rules | 🔄 bedrock + deepslate + grass/dirt (not full JSON tree) |
+| Surface rules | 🔄 basic pass + JSON tree interpreter (vertical_gradient/block/sequence; biomes fail-closed) |
 | Multi-noise biomes | ⬜ |
 | Aquifers / carvers / ores | 🔄 deep lava y&lt;-54 placeholder; full AquiferSampler later |
 | Features / structures | ⬜ |
