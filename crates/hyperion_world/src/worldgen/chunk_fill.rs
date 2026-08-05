@@ -16,16 +16,17 @@ use crate::chunk::{
 };
 use crate::level_dat::DEFAULT_DATA_VERSION;
 use crate::worldgen::aquifers::SimpleAquifer;
+use crate::worldgen::carvers::apply_overworld_carvers;
 use crate::worldgen::climate::ClimateSampler;
 use crate::worldgen::density::{DensityContext, DensityFunction, DensityLibrary};
 use crate::worldgen::noise_settings::NoiseSettings;
 use crate::worldgen::surface_rules::apply_basic_surface;
 
 /// Generates one column by sampling `final_density` on the noise cell grid,
-/// multi-noise biome (when router has climate axes), then surface pass.
+/// multi-noise biome (when router has climate axes), surface pass, then carvers.
 ///
-/// Not full official parity until golden dumps match (noise tables + full
-/// surface_rule tree + aquifers).
+/// Pipeline slot order matches JE chunk status: noise → surface → carvers.
+/// Not full official parity until golden dumps match.
 pub fn generate_column_from_density(
     seed: i64,
     chunk_x: i32,
@@ -63,6 +64,15 @@ pub fn generate_column_from_density(
         settings.surface_rule.as_ref(),
         &biome,
     );
+
+    // CARVERS status — worm caves + rare canyons (simplified JE carvers).
+    apply_overworld_carvers(
+        &mut column,
+        seed,
+        settings.sea_level,
+        settings.noise.min_y,
+    );
+
     Ok(column)
 }
 

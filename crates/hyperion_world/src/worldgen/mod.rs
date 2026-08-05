@@ -12,6 +12,7 @@
 
 pub mod aquifers;
 pub mod blended_noise;
+pub mod carvers;
 pub mod chunk_fill;
 pub mod climate;
 pub mod datapack;

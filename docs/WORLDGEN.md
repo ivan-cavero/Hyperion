@@ -72,7 +72,7 @@ Declare “matches official server” **only** when golden diffs are green.
 | Golden parity vs official server dump | ⬜ Hyperion-stable fingerprints only (need official dumps) |
 | Surface rules | 🔄 basic pass + JSON tree interpreter (vertical_gradient/block/sequence; biomes fail-closed) |
 | Multi-noise biomes | 🔄 climate sample + expanded parameter table (~40 points; not full builder yet) |
-| Aquifers / carvers / ores | 🔄 SimpleAquifer (floodedness + lava noise); full NoiseBasedAquifer later |
+| Aquifers / carvers / ores | 🔄 SimpleAquifer + worm/canyon carvers (not full CaveWorldCarver yet); ores later |
 | Features / structures | ⬜ |
 | CI golden chunks vs official dump | ⬜ Phase 2 exit |
 
