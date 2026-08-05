@@ -14,7 +14,11 @@ Research sources (we reverse-engineer and reimplement; we do not ship GPL code):
 ## Decision (ADR 0001)
 
 - **Own core in pure Rust** (MIT).
-- No cubiomes FFI, no Pumpkin/GPL inheritance.
+- No cubiomes FFI, no Pumpkin/GPL **code**.
+- **Learning from other Rust servers is encouraged**: study architecture and
+  algorithms (e.g. Pumpkin’s `pumpkin-world/src/generation/noise/router/` layout:
+  density functions → noise router → aquifers/ores → surface → features). Reimplement
+  under MIT; never vendor GPL sources.
 - Verification = **diff against the official server** (same seed → same chunk).
 
 ## Layout in code
@@ -58,8 +62,9 @@ Declare “matches official server” **only** when golden diffs are green.
 | Scaffold hills (Play only) | ✅ temporary |
 | Xoroshiro / Legacy RNG | 🔄 foundation |
 | ImprovedNoise / Perlin / NormalNoise | 🔄 foundation |
-| Density AST (partial) | 🔄 partial |
-| NoiseRouter + chunk fill from `final_density` | ⬜ **next real milestone** |
+| Density AST + library + string refs | 🔄 expanding |
+| `NoiseSettings` + fill column from `final_density` | 🔄 works for simple routers (flat gradient); overworld graph not fully resolved yet |
+| Full overworld `final_density` (spline, old_blended_noise, …) | ⬜ |
 | Surface rules | ⬜ |
 | Multi-noise biomes | ⬜ |
 | Aquifers / carvers / ores | ⬜ |

@@ -573,6 +573,7 @@ dependencies = [
  "hyperion_protocol",
  "serde_json",
  "thiserror",
+ "zip",
 ]
 
 [[package]]

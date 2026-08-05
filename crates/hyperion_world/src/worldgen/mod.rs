@@ -10,8 +10,11 @@
 //!
 //! Policy: `docs/WORLDGEN.md`.
 
+pub mod chunk_fill;
+pub mod datapack;
 pub mod density;
 pub mod improved_noise;
+pub mod noise_settings;
 pub mod normal_noise;
 pub mod perlin_noise;
 pub mod random;
@@ -24,7 +27,12 @@ pub use scaffold::{
 };
 
 // Default / 1:1 math surface.
-pub use density::{DensityContext, DensityFunction, NoiseRegistry, y_clamped_gradient};
+pub use chunk_fill::generate_column_from_density;
+pub use datapack::{default_server_inner_jar, find_workspace_root, load_overworld_from_jar};
+pub use density::{
+    DensityContext, DensityFunction, DensityLibrary, NoiseRegistry, y_clamped_gradient,
+};
+pub use noise_settings::{NoiseSettings, NoiseSize};
 pub use normal_noise::{NoiseParameters, NormalNoise};
 pub use perlin_noise::PerlinNoise;
 pub use random::{LegacyRandom, RandomSource, XoroshiroRandom, world_seed_to_xoroshiro};

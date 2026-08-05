@@ -13,6 +13,8 @@ flate2 = { workspace = true }
 thiserror = { workspace = true }
 # Worldgen datapack JSON (noise params, density functions).
 serde_json = { workspace = true }
+# Read official server-inner.jar for density/noise_settings (dev/tests).
+zip = { workspace = true }
 
 [lints]
 workspace = true
