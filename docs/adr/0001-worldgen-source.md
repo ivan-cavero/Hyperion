@@ -43,15 +43,17 @@ first-party code under MIT. Verification remains **diff against vanilla**
 
 ## Implementation strategy (phased parity)
 
-Own core does not mean "everything day one". Layers ship with declared parity:
+Own core does not mean "everything day one". Layers ship with **declared** parity
+only when golden diffs are green. Live doc: `docs/WORLDGEN.md`.
 
-1. **Scaffold (done)** — flat single-value sections + Anvil stream.
-2. **Multi-palette sections + block-state registry** — required before non-flat terrain.
-3. **Height / noise + surface** — overworld column shape; dirt/grass/stone fill.
-4. **Biomes** — climate + biome source compatible with vanilla seed maths where claimed.
-5. **Caves, ores, carvers** — underground structure of the column.
-6. **Features** (trees, lakes, …) then **structures** (jigsaw last).
-7. **Diff suite** — same seed vs vanilla jar data generators / extracted chunks in CI.
+1. **Scaffold (done)** — flat then Hyperion hills for Play (explicitly **not** 1:1).
+2. **Multi-palette sections + block-state registry (done)** — required before non-flat terrain.
+3. **Vanilla math foundation (in progress)** — Xoroshiro/Legacy RNG, Perlin/NormalNoise, density AST.
+4. **NoiseRouter + `final_density` chunk fill** — first real 1:1 terrain claim candidate.
+5. **Surface rules + multi-noise biomes** — climate from router outputs.
+6. **Aquifers, carvers, ores** — underground structure of the column.
+7. **Features** (trees, lakes, …) then **structures** (jigsaw last).
+8. **Diff suite** — same seed vs vanilla dumps in CI (Phase 2 exit).
 
 Structures and full jigsaw may lag other layers; the product bar is **declare parity by layer**, not silent half-parity.
 

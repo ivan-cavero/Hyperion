@@ -11,6 +11,8 @@ description = "Hyperion world: chunks, 1:1 worldgen, world formats"
 hyperion_protocol = { path = "../hyperion_protocol" }
 flate2 = { workspace = true }
 thiserror = { workspace = true }
+# Worldgen datapack JSON (noise params, density functions).
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

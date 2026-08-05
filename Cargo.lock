@@ -571,6 +571,7 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "hyperion_protocol",
+ "serde_json",
  "thiserror",
 ]
 

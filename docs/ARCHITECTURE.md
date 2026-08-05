@@ -25,7 +25,7 @@
 ### 3. World (hyperion_world)
 - **Bootstrap (Phase 2)**: first-start data dir — vanilla `level-name` / `level-seed` → `<level-name>/level.dat` (gzip storage NBT), `session.lock`, list JSON stubs, spawn chunk in Anvil.
 - **Chunks (Phase 2.1–2.3)**: Anvil region I/O + column model with **single- and multi-palette** sections (storage NBT ↔ network `level_chunk_with_light`). Flat stone platform at spawn until worldgen; `set_block` promotes to multi-palette. Default block-state ids from generated 26.2 report. **HCF** later.
-- **1:1 worldgen (ADR 0001)**: **own core** in pure Rust — noise + biomes + surface + features + structures. No cubiomes FFI, no Pumpkin inheritance. Verification by diff against vanilla (same seed).
+- **1:1 worldgen (ADR 0001)**: **own core** in pure Rust — target density/noise router + biomes + surface rules + features + structures. No cubiomes FFI, no Pumpkin. Play currently uses a **scaffold** heightmap (not parity). Verification by golden diffs vs vanilla (same seed). See `docs/WORLDGEN.md`.
 - **Light**: full-bright sky mask for now; multi-threaded sky/block light later.
 
 ### 4. Simulation (hyperion_simulation)

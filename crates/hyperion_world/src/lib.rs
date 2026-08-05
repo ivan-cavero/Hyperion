@@ -6,7 +6,8 @@
 //! - `level-name` → world folder + NBT `LevelName`
 //! - `level-seed` → NBT `RandomSeed` / `WorldGenSettings.seed` (0 = random once)
 //!
-//! Own-core worldgen (ADR 0001) and HCF follow later in Phase 2.
+//! Own-core worldgen (ADR 0001): scaffold for Play today; vanilla-aligned
+//! density/noise foundation for 1:1 (see `docs/WORLDGEN.md`).
 
 mod anvil;
 mod bootstrap;
@@ -33,6 +34,10 @@ pub use error::WorldError;
 pub use generated::block_states;
 pub use gzip_util::{gzip_compress, gzip_decompress};
 pub use level_dat::{DEFAULT_DATA_VERSION, LevelMeta, read_level_dat, write_level_dat};
+pub use worldgen::vanilla::{
+    DensityContext, DensityFunction, LegacyRandom, NoiseParameters, NoiseRegistry, NormalNoise,
+    PerlinNoise, RandomSource, XoroshiroRandom, world_seed_to_xoroshiro, y_clamped_gradient,
+};
 pub use worldgen::{
     SEA_LEVEL, ensure_generated_on_disk, generate_column, load_or_generate, spawn_feet_y,
     surface_height, value_noise_2d,

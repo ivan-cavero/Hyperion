@@ -5,13 +5,13 @@ use std::path::Path;
 use crate::anvil::{RegionFile, region_path};
 use hyperion_protocol::BLOCK_SECTION_SIZE;
 
+use super::noise::surface_height;
 use crate::chunk::{
     BlockState, ChunkColumn, ChunkSection, MIN_SECTION_Y, PLAINS_BIOME, SECTION_COUNT,
     section_index,
 };
 use crate::error::WorldError;
 use crate::level_dat::DEFAULT_DATA_VERSION;
-use crate::worldgen::noise::surface_height;
 
 /// Vanilla-ish sea level (not used for water yet; documents the height band).
 pub const SEA_LEVEL: i32 = 63;
