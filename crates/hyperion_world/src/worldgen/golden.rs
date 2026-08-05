@@ -12,6 +12,7 @@ pub struct ColumnFingerprint {
     pub non_air: u32,
     pub bedrock: u32,
     pub stone: u32,
+    pub deepslate: u32,
     pub dirt: u32,
     pub grass: u32,
     pub water: u32,
@@ -24,6 +25,7 @@ impl ColumnFingerprint {
         let mut non_air = 0u32;
         let mut bedrock = 0u32;
         let mut stone = 0u32;
+        let mut deepslate = 0u32;
         let mut dirt = 0u32;
         let mut grass = 0u32;
         let mut water = 0u32;
@@ -38,6 +40,7 @@ impl ColumnFingerprint {
                     match b.name.as_str() {
                         "minecraft:bedrock" => bedrock += 1,
                         "minecraft:stone" => stone += 1,
+                        "minecraft:deepslate" => deepslate += 1,
                         "minecraft:dirt" => dirt += 1,
                         "minecraft:grass_block" => grass += 1,
                         "minecraft:water" => water += 1,
@@ -50,6 +53,7 @@ impl ColumnFingerprint {
         let base_z = col.z * 16;
         let sample_pts = [
             (0, -64, 0),
+            (0, -32, 0),
             (0, 0, 0),
             (0, 64, 0),
             (8, 80, 8),
@@ -64,6 +68,7 @@ impl ColumnFingerprint {
             non_air,
             bedrock,
             stone,
+            deepslate,
             dirt,
             grass,
             water,
@@ -119,7 +124,9 @@ mod tests {
         assert_eq!(fp, fp2);
         assert!(fp.bedrock > 0, "bedrock floor expected");
         assert!(fp.grass > 0, "grass after surface pass");
+        assert!(fp.deepslate > 0, "deepslate band below y=0 expected");
         assert_eq!(fp.samples[0], "minecraft:bedrock");
+        assert_eq!(fp.samples[1], "minecraft:deepslate");
     }
 
     #[test]
@@ -147,8 +154,8 @@ mod tests {
             fp.surface_y
         );
         eprintln!(
-            "overworld fp seed=12345 non_air={} surface_y={} grass={} stone={}",
-            fp.non_air, fp.surface_y, fp.grass, fp.stone
+            "overworld fp seed=12345 non_air={} surface_y={} grass={} stone={} deepslate={}",
+            fp.non_air, fp.surface_y, fp.grass, fp.stone, fp.deepslate
         );
     }
 }

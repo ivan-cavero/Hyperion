@@ -3,6 +3,7 @@
 //! Full surface_rule trees (biome, stone_depth, noise, …) land layer by layer.
 //! This module implements the pieces needed for a recognizable overworld top:
 //! - bedrock floor gradient near `min_y`
+//! - deepslate band below Y=0 (stone → deepslate)
 //! - grass + dirt + stone cap on the highest solid blocks of each column
 //!
 //! That matches the *role* of surface rules after `final_density` (wiki), not
@@ -10,16 +11,19 @@
 
 use crate::chunk::{BlockState, ChunkColumn, MIN_SECTION_Y};
 
+/// Y at and below which solid stone becomes deepslate (overworld convention).
+const DEEPSLATE_Y: i32 = 0;
+
 /// Apply post-density surface dressing in place.
 pub fn apply_basic_surface(column: &mut ChunkColumn, sea_level: i32, min_y: i32) {
     apply_bedrock_floor(column, min_y);
+    apply_deepslate_band(column, min_y);
     apply_surface_layers(column, sea_level);
     recompute_heightmap(column);
 }
 
 fn apply_bedrock_floor(column: &mut ChunkColumn, min_y: i32) {
     // Official overworld: bedrock band roughly min_y .. min_y+5 with a gradient.
-    // We solid-fill min_y and min_y+1 as bedrock; higher gradient randomness later.
     for z in 0..16 {
         for x in 0..16 {
             let wx = column.x * 16 + x;
@@ -34,6 +38,28 @@ fn apply_bedrock_floor(column: &mut ChunkColumn, min_y: i32) {
                 }
             }
             column.set_block(wx, min_y, wz, BlockState::bedrock());
+        }
+    }
+}
+
+/// Replace stone with deepslate for Y < 0 (and Y==0 uses a soft edge like vanilla).
+fn apply_deepslate_band(column: &mut ChunkColumn, min_y: i32) {
+    for z in 0..16 {
+        for x in 0..16 {
+            let wx = column.x * 16 + x;
+            let wz = column.z * 16 + z;
+            for y in min_y..DEEPSLATE_Y {
+                let b = column.get_block(wx, y, wz);
+                if b == BlockState::stone() {
+                    column.set_block(wx, y, wz, BlockState::deepslate());
+                }
+            }
+            // Soft edge at Y=0: half the stone becomes deepslate (hash), similar to
+            // vanilla's y-transition noise without full surface_rule graph yet.
+            let b = column.get_block(wx, DEEPSLATE_Y, wz);
+            if b == BlockState::stone() && mix(wx, DEEPSLATE_Y, wz).is_multiple_of(2) {
+                column.set_block(wx, DEEPSLATE_Y, wz, BlockState::deepslate());
+            }
         }
     }
 }
@@ -57,7 +83,7 @@ fn apply_surface_layers(column: &mut ChunkColumn, sea_level: i32) {
             let Some(surface_y) = top else {
                 continue;
             };
-            // Underwater: dirt/gravel-ish → keep dirt; above sea: grass.
+            // Underwater: dirt top; above sea: grass.
             if surface_y >= sea_level - 1 {
                 column.set_block(wx, surface_y, wz, BlockState::grass_block());
                 for d in 1..=3 {
@@ -69,12 +95,14 @@ fn apply_surface_layers(column: &mut ChunkColumn, sea_level: i32) {
                     if b.is_air() || b.is_fluid() {
                         break;
                     }
-                    if b == BlockState::stone() || b == BlockState::dirt() {
+                    if b == BlockState::stone()
+                        || b == BlockState::dirt()
+                        || b == BlockState::deepslate()
+                    {
                         column.set_block(wx, y, wz, BlockState::dirt());
                     }
                 }
             } else {
-                // Seafloor: dirt top
                 column.set_block(wx, surface_y, wz, BlockState::dirt());
                 for d in 1..=2 {
                     let y = surface_y - d;
@@ -131,7 +159,6 @@ mod tests {
 
     #[test]
     fn flat_density_plus_surface_has_grass() {
-        // Gradient to y=320 so solid top is ~128 (above sea 63) → grass, not seafloor dirt.
         let v = serde_json::json!({
             "sea_level": 63,
             "aquifers_enabled": false,
@@ -152,7 +179,6 @@ mod tests {
         });
         let settings = NoiseSettings::from_json(&v).unwrap();
         let mut lib = DensityLibrary::new(0);
-        // generate_column_from_density already runs apply_basic_surface.
         let col = generate_column_from_density(0, 0, 0, &settings, &mut lib).unwrap();
         assert_eq!(col.get_block(0, -64, 0), BlockState::bedrock());
         let mut found_grass = false;
@@ -163,5 +189,7 @@ mod tests {
             }
         }
         assert!(found_grass, "expected grass after surface pass");
+        // Deep below sea: stone became deepslate
+        assert_eq!(col.get_block(0, -32, 0), BlockState::deepslate());
     }
 }

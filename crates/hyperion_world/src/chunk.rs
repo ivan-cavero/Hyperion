@@ -92,6 +92,11 @@ impl BlockState {
         Self::new("minecraft:grass_block")
     }
 
+    /// Deepslate (default axis).
+    pub fn deepslate() -> Self {
+        Self::new("minecraft:deepslate")
+    }
+
     /// Whether this is air (including cave/void air names).
     pub fn is_air(&self) -> bool {
         matches!(

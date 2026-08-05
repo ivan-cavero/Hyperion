@@ -38,14 +38,15 @@ impl BlendedNoise {
         Self::create_from_random(&mut random, params)
     }
 
-    /// Official path: one RandomSource, construct min → max → main in order.
+    /// Official path: one RandomSource, construct min → max → main in order
+    /// using **legacy sequential** Perlin creation (not modern positional).
     pub fn create_from_random(random: &mut dyn RandomSource, params: BlendedNoiseParams) -> Self {
         // Octaves at indices [-15..=0] for limits (16), [-7..=0] for main (8).
         let amps_limit = vec![1.0; 16];
         let amps_main = vec![1.0; 8];
-        let min_limit = PerlinNoise::create(random, -15, &amps_limit);
-        let max_limit = PerlinNoise::create(random, -15, &amps_limit);
-        let main = PerlinNoise::create(random, -7, &amps_main);
+        let min_limit = PerlinNoise::create_legacy(random, -15, &amps_limit);
+        let max_limit = PerlinNoise::create_legacy(random, -15, &amps_limit);
+        let main = PerlinNoise::create_legacy(random, -7, &amps_main);
         Self {
             params,
             min_limit,

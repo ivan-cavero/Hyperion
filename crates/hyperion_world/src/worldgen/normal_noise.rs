@@ -1,7 +1,14 @@
-//! `NormalNoise` — two Perlin fields mixed as in vanilla (value ≈ first + second/2, scaled).
+//! `NormalNoise` — two Perlin fields mixed as in vanilla JE.
+//!
+//! `getValue(x,y,z) = (first(x,y,z) + second(x·IF, y·IF, z·IF)) * valueFactor`
+//! with `INPUT_FACTOR ≈ 1.0181268882175227` and
+//! `valueFactor = (1/6) / expectedDeviation(maxNonZero - minNonZero)`.
 
 use crate::worldgen::perlin_noise::PerlinNoise;
 use crate::worldgen::random::RandomSource;
+
+/// JE `NormalNoise.INPUT_FACTOR`.
+const INPUT_FACTOR: f64 = 1.018_126_888_217_522_7;
 
 /// Parameters from `data/minecraft/worldgen/noise/*.json`.
 #[derive(Debug, Clone, PartialEq)]
@@ -52,12 +59,8 @@ impl NormalNoise {
     pub fn create(random: &mut dyn RandomSource, params: &NoiseParameters) -> Self {
         let first = PerlinNoise::create(random, params.first_octave, &params.amplitudes);
         let second = PerlinNoise::create(random, params.first_octave, &params.amplitudes);
-        // Vanilla: valueFactor = 1/6 / expectedstddev-ish; uses first.maxValue.
-        // Approximate with 1.0 / (6.0 * 0.55) style from sources:
-        let value_factor = 1.111_111_111_111_111_2; // 10/9 used in recent versions for scale
-        // More accurately from 1.20+ NormalNoise:
-        // valueFactor = 1.0 / (expectedStd * 2) — use classic 1/6 * max?
-        let max_value = (first.max_value() + second.max_value() * 0.5) * value_factor;
+        let value_factor = value_factor_for_amplitudes(&params.amplitudes);
+        let max_value = (first.max_value() + second.max_value()) * value_factor;
         Self {
             first,
             second,
@@ -72,9 +75,35 @@ impl NormalNoise {
 
     pub fn get_value(&self, x: f64, y: f64, z: f64) -> f64 {
         let a = self.first.get_value(x, y, z);
-        let b = self.second.get_value(x, y, z);
-        (a + b * 0.5) * self.value_factor
+        let b = self.second.get_value(
+            x * INPUT_FACTOR,
+            y * INPUT_FACTOR,
+            z * INPUT_FACTOR,
+        );
+        (a + b) * self.value_factor
     }
+}
+
+/// `NormalNoise.expectedDeviation(octaveSpan)`.
+fn expected_deviation(octave_span: i32) -> f64 {
+    0.1 * (1.0 + 1.0 / f64::from(octave_span + 1))
+}
+
+/// `valueFactor = (1/6) / expectedDeviation(maxIdx - minIdx)` over non-zero amps.
+fn value_factor_for_amplitudes(amplitudes: &[f64]) -> f64 {
+    let mut min_i = i32::MAX;
+    let mut max_i = i32::MIN;
+    for (i, &amp) in amplitudes.iter().enumerate() {
+        if amp != 0.0 {
+            let i = i as i32;
+            min_i = min_i.min(i);
+            max_i = max_i.max(i);
+        }
+    }
+    if min_i == i32::MAX {
+        return 1.0;
+    }
+    (1.0 / 6.0) / expected_deviation(max_i - min_i)
 }
 
 #[cfg(test)]
@@ -100,5 +129,15 @@ mod tests {
         let na = NormalNoise::create(&mut a, &params);
         let nb = NormalNoise::create(&mut b, &params);
         assert_eq!(na.get_value(0.0, 0.0, 0.0), nb.get_value(0.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn value_factor_matches_je_formula() {
+        // amps with non-zero at 0 and 2 → span 2
+        // expectedDeviation(2) = 0.1 * (1 + 1/3) = 0.1 * 4/3 ≈ 0.1333...
+        // valueFactor = (1/6) / that
+        let vf = value_factor_for_amplitudes(&[1.0, 0.0, 1.0]);
+        let expected = (1.0 / 6.0) / expected_deviation(2);
+        assert!((vf - expected).abs() < 1e-12);
     }
 }
