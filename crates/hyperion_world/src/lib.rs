@@ -35,12 +35,13 @@ pub use generated::block_states;
 pub use gzip_util::{gzip_compress, gzip_decompress};
 pub use level_dat::{DEFAULT_DATA_VERSION, LevelMeta, read_level_dat, write_level_dat};
 pub use worldgen::{
-    DensityContext, DensityFunction, DensityLibrary, LegacyRandom, NoiseParameters, NoiseRegistry,
-    NoiseSettings, NoiseSize, NormalNoise, PerlinNoise, RandomSource, SEA_LEVEL, XoroshiroRandom,
-    apply_basic_surface, default_server_inner_jar, ensure_generated_on_disk, find_workspace_root,
-    generate_column, generate_column_density_only, generate_column_from_density, load_or_generate,
-    load_overworld_from_jar, spawn_feet_y, surface_height, value_noise_2d, world_seed_to_xoroshiro,
-    y_clamped_gradient,
+    ColumnGenerator, DensityContext, DensityFunction, DensityLibrary, LegacyRandom,
+    NoiseParameters, NoiseRegistry, NoiseSettings, NoiseSize, NormalNoise, PerlinNoise,
+    RandomSource, SEA_LEVEL, WorldgenMode, XoroshiroRandom, apply_basic_surface,
+    default_server_inner_jar, ensure_generated_on_disk, find_workspace_root, generate_column,
+    generate_column_density_only, generate_column_from_density, load_or_generate,
+    load_overworld_from_jar, resolve_server_jar, spawn_feet_y, surface_height, value_noise_2d,
+    world_seed_to_xoroshiro, y_clamped_gradient,
 };
 
 /// World seed type used by future worldgen (u64, same range as Java `long` bits).

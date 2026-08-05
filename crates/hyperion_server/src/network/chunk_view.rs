@@ -16,9 +16,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use hyperion_protocol::ProtocolError;
-use hyperion_world::{
-    ensure_generated_on_disk, generate_column, load_chunk, position_to_chunk, spawn_feet_y,
-};
+use hyperion_world::{ColumnGenerator, load_chunk, position_to_chunk};
 use tracing::debug;
 
 /// One step of view update after the player changes chunk.
@@ -33,7 +31,6 @@ pub struct ViewUpdate {
 }
 
 /// Tracks which chunks a connection currently has loaded.
-#[derive(Debug)]
 pub struct ChunkView {
     center_x: i32,
     center_z: i32,
@@ -42,8 +39,8 @@ pub struct ChunkView {
     /// Columns that need an Anvil write (lazy disk).
     dirty: HashSet<(i32, i32)>,
     world_dir: PathBuf,
-    /// Worldgen seed (from `level.dat` / config).
-    seed: u64,
+    /// Scaffold / density column generator (seed + mode).
+    generator: ColumnGenerator,
     /// When false, only the initial void/synthetic spawn is used (unit tests).
     streaming: bool,
 }
@@ -61,6 +58,8 @@ impl ChunkView {
         let radius = view_distance.clamp(1, 8);
         let streaming = !world_dir.as_os_str().is_empty();
 
+        let generator = ColumnGenerator::new(seed);
+
         if !streaming {
             let view = Self {
                 center_x: 0,
@@ -69,13 +68,13 @@ impl ChunkView {
                 loaded: HashSet::new(),
                 dirty: HashSet::new(),
                 world_dir,
-                seed,
+                generator,
                 streaming: false,
             };
             return Ok((view, 64, 0));
         }
 
-        let feet_y = spawn_feet_y(seed);
+        let feet_y = generator.spawn_feet_y();
         let edge = 2 * radius + 1;
         let count = edge * edge;
         let mut loaded = HashSet::with_capacity(count as usize);
@@ -96,7 +95,7 @@ impl ChunkView {
             loaded,
             dirty,
             world_dir,
-            seed,
+            generator,
             streaming: true,
         };
         Ok((view, feet_y, count))
@@ -119,7 +118,7 @@ impl ChunkView {
         }
         let column = match load_chunk(&self.world_dir, chunk_x, chunk_z) {
             Ok(Some(col)) => col,
-            Ok(None) => generate_column(self.seed, chunk_x, chunk_z),
+            Ok(None) => self.generator.generate_column(chunk_x, chunk_z),
             Err(error) => {
                 debug!(
                     world = %self.world_dir.display(),
@@ -128,7 +127,7 @@ impl ChunkView {
                     %error,
                     "chunk load failed; generating"
                 );
-                generate_column(self.seed, chunk_x, chunk_z)
+                self.generator.generate_column(chunk_x, chunk_z)
             }
         };
         match column.encode_network_payload(true) {
@@ -169,7 +168,10 @@ impl ChunkView {
         let mut written = 0usize;
         let batch: Vec<(i32, i32)> = self.dirty.iter().copied().take(max_writes).collect();
         for (chunk_x, chunk_z) in batch {
-            match ensure_generated_on_disk(&self.world_dir, self.seed, chunk_x, chunk_z) {
+            match self
+                .generator
+                .ensure_on_disk(&self.world_dir, chunk_x, chunk_z)
+            {
                 Ok(_) => {
                     self.dirty.remove(&(chunk_x, chunk_z));
                     written += 1;
@@ -293,7 +295,8 @@ mod tests {
         let (mut view, feet, count) = ChunkView::spawn(&world, 2, 42).expect("spawn");
         assert!(view.streaming_enabled());
         assert_eq!(count, 25);
-        assert_eq!(feet, spawn_feet_y(42));
+        // Feet Y comes from the active generator (scaffold by default).
+        assert!(feet > 0 && feet < 320, "feet_y={feet}");
         let payload = view.payload(0, 0).expect("payload");
         assert!(payload.len() > 50_000);
         assert!(view.flush_dirty_budget(4) >= 1);

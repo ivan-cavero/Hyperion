@@ -14,6 +14,7 @@ pub mod blended_noise;
 pub mod chunk_fill;
 pub mod datapack;
 pub mod density;
+pub mod engine;
 #[cfg(test)]
 pub mod golden;
 pub mod improved_noise;
@@ -37,6 +38,7 @@ pub use datapack::{default_server_inner_jar, find_workspace_root, load_overworld
 pub use density::{
     DensityContext, DensityFunction, DensityLibrary, NoiseRegistry, y_clamped_gradient,
 };
+pub use engine::{ColumnGenerator, WorldgenMode, resolve_server_jar};
 pub use noise_settings::{NoiseSettings, NoiseSize};
 pub use normal_noise::{NoiseParameters, NormalNoise};
 pub use perlin_noise::PerlinNoise;

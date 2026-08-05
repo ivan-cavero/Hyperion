@@ -83,9 +83,12 @@ Until a layer is green: say **pre-alpha / scaffold**, never “full vanilla worl
 
 ## Play integration
 
-- Today: scaffold columns.
-- Switch default Play to density fill when: router produces terrain **and** a
-  smoke golden test for seed + chunk (0,0) exists.
+- Default: scaffold columns (`HYPERION_WORLDGEN` unset or `scaffold`).
+- Density path: set `HYPERION_WORLDGEN=density` (or `auto` if the jar is found).
+  Optional `HYPERION_SERVER_JAR` points at `server-inner-*.jar`.
+- Density fill uses cell-grid sampling + basic surface; not 1:1 yet.
+- Flip the **default** to density when spawn latency is acceptable and a smoke
+  golden for seed + chunk (0,0) is green.
 
 ## Regenerating data extracts
 
