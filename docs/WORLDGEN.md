@@ -87,14 +87,18 @@ Until a layer is green: say **pre-alpha / scaffold**, never “full vanilla worl
 
 ## Play integration
 
-- **Default: scaffold** (fast hills). Safe for join.
-- Density: `HYPERION_WORLDGEN=density` (+ optional `HYPERION_SERVER_JAR`).
-- Density **detail** (performance):
-  - default / `HYPERION_WORLDGEN_DETAIL=terrain` — terrain + surface only (recommended for Play)
-  - `HYPERION_WORLDGEN_DETAIL=full` — veins, carvers, trees, structures (slow)
-- Spawn uses solid ground + headroom (searches nearby if origin is ocean).
-- Columns are cached so re-streaming the same chunk is cheap.
-- Not 1:1 with vanilla yet.
+**Play is scaffold by default** — fast, joinable hills. Do **not** enable
+density for normal multiplayer until it is fast enough.
+
+| Env | Effect |
+|-----|--------|
+| (unset) | **scaffold** — recommended |
+| `HYPERION_WORLDGEN=density` | experimental density terrain (**terrain-only** for Play; full decoration ignored) |
+| `HYPERION_WORLDGEN_DETAIL=full` | **ignored in Play** (too slow at view-distance 8) |
+
+Spawn: solid ground + headroom; origin chunk is sent before teleport so you
+do not appear at (0,0,0) while the world is empty.
+Not 1:1 with vanilla yet.
 
 ## Regenerating data extracts
 

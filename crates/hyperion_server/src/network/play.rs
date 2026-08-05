@@ -183,14 +183,28 @@ pub(super) async fn serve_play(
         )
         .await?;
 
-    // 9. Default spawn position.
+    // 9–13. World open: compute spawn height FIRST, then tell the client where
+    // spawn is, then stream chunks, then teleport. Never leave the player at
+    // (0,0,0) while terrain is still generating.
+    let world_seed = config.level_seed as u64;
+    let (mut chunk_view, feet_y, initial_count) =
+        ChunkView::spawn(config.world_dir.clone(), view_distance, world_seed)
+            .map_err(ConnectionError::from)?;
+    // Clamp: never advertise void / bedrock spawn.
+    let feet_y = feet_y.clamp(16, 300);
+    let teleport_y = if chunk_view.streaming_enabled() {
+        f64::from(feet_y)
+    } else {
+        spawn_y.max(64.0) + 0.5
+    };
+
     connection
         .write_frame(
             SET_DEFAULT_SPAWN_POSITION_PACKET_ID,
             &encode_set_default_spawn_position_payload(
                 OVERWORLD_DIMENSION_TYPE_ID,
                 0,
-                config.spawn_y,
+                feet_y,
                 0,
                 0.0,
                 0.0,
@@ -198,7 +212,7 @@ pub(super) async fn serve_play(
         )
         .await?;
 
-    // 10. "Start waiting for level chunks" (vanilla sends this before chunks).
+    // "Start waiting for level chunks" (vanilla sends this before chunks).
     connection
         .write_frame(
             GAME_EVENT_PACKET_ID,
@@ -206,7 +220,7 @@ pub(super) async fn serve_play(
         )
         .await?;
 
-    // 11. Time and ticking state.
+    // Time and ticking state.
     let clocks = [TimeClock {
         clock_id: 0,
         time: 6_000, // noon
@@ -226,12 +240,9 @@ pub(super) async fn serve_play(
         )
         .await?;
 
-    // 12. Chunk batch — stream encode→write without holding 289×50 KiB in RAM.
-    // Disk is lazy (dirty set); one TCP flush after the batch (not per chunk).
-    let world_seed = config.level_seed as u64;
-    let (mut chunk_view, feet_y, initial_count) =
-        ChunkView::spawn(config.world_dir.clone(), view_distance, world_seed)
-            .map_err(ConnectionError::from)?;
+    // Chunk batch — spawn chunk first so the client has ground under the
+    // teleport, then the rest of the view. Scaffold gen is fast; density
+    // Play uses terrain-only detail.
     connection
         .write_frame(
             CHUNK_BATCH_START_PACKET_ID,
@@ -239,23 +250,40 @@ pub(super) async fn serve_play(
         )
         .await?;
     let batch_size = if chunk_view.streaming_enabled() {
+        // 1) Origin column first
+        if let Some(payload) = chunk_view.payload(0, 0) {
+            connection
+                .write_frame(LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, &payload)
+                .await?;
+        }
+        // 2) Remaining columns (skip 0,0 already sent)
+        let mut sent = 1i32;
         for (chunk_x, chunk_z) in chunk_view.initial_coords() {
+            if chunk_x == 0 && chunk_z == 0 {
+                continue;
+            }
             let payload = chunk_view
                 .payload(chunk_x, chunk_z)
                 .expect("streaming view has network cache");
             connection
                 .write_frame(LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, &payload)
                 .await?;
+            sent += 1;
+            // Flush every few chunks so the client can start rendering instead
+            // of waiting for the whole view distance.
+            if sent % 9 == 0 {
+                connection.flush().await?;
+            }
         }
-        initial_count
+        sent
     } else {
-        // Unit tests / no world_dir: single synthetic void column.
         let payload = encode_empty_chunk_payload(0, 0, SECTION_COUNT, true, PLAINS_BIOME_ID)?;
         connection
             .write_frame(LEVEL_CHUNK_WITH_LIGHT_PACKET_ID, &payload)
             .await?;
         1
     };
+    let _ = initial_count;
     connection
         .write_frame(
             CHUNK_BATCH_FINISHED_PACKET_ID,
@@ -263,19 +291,13 @@ pub(super) async fn serve_play(
         )
         .await?;
 
-    // 13. Teleport the player to the spawn point (feet on the platform).
-    let teleport_y = if chunk_view.streaming_enabled() {
-        f64::from(feet_y)
-    } else {
-        spawn_y + 0.5
-    };
+    // Teleport onto solid ground (after spawn chunk exists).
     connection
         .write_frame(
             PLAYER_POSITION_PACKET_ID,
             &encode_player_position_payload(0, 0.5, teleport_y, 0.5, 0.0, 0.0, 0),
         )
         .await?;
-    // Client must see spawn+teleport before the keep-alive loop.
     connection.flush().await?;
 
     // Lazy disk: a small budget so join stays fast; rest drains on later ticks.
