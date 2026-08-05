@@ -15,7 +15,7 @@ use crate::worldgen::random::{PositionalRandomFactory, RandomSource};
 
 /// Context for one cell while evaluating a surface rule.
 #[derive(Debug, Clone, Copy)]
-pub struct SurfaceCtx {
+pub struct SurfaceCtx<'a> {
     pub x: i32,
     pub y: i32,
     pub z: i32,
@@ -24,10 +24,12 @@ pub struct SurfaceCtx {
     /// Highest solid Y in this column (for stone_depth / above_preliminary).
     pub surface_y: i32,
     pub seed: i64,
+    /// Multi-noise biome id for this column.
+    pub biome: &'a str,
 }
 
 /// Evaluate a surface rule node; `Some` means this rule places a block.
-pub fn eval_rule(rule: &Value, ctx: &SurfaceCtx) -> Option<BlockState> {
+pub fn eval_rule(rule: &Value, ctx: &SurfaceCtx<'_>) -> Option<BlockState> {
     let map = rule.as_object()?;
     let type_name = map
         .get("type")
@@ -68,7 +70,7 @@ pub fn eval_rule(rule: &Value, ctx: &SurfaceCtx) -> Option<BlockState> {
     }
 }
 
-fn eval_condition(cond: &Value, ctx: &SurfaceCtx) -> bool {
+fn eval_condition(cond: &Value, ctx: &SurfaceCtx<'_>) -> bool {
     let Some(map) = cond.as_object() else {
         return false;
     };
@@ -118,15 +120,46 @@ fn eval_condition(cond: &Value, ctx: &SurfaceCtx) -> bool {
             let inner = map.get("invert").or_else(|| map.get("condition"));
             inner.map(|c| !eval_condition(c, ctx)).unwrap_or(false)
         }
-        // Biome / noise / steep / hole / temperature: fail closed until implemented.
-        "biome" | "noise_threshold" | "steep" | "hole" | "temperature" => false,
+        "biome" => {
+            // `biome_is`: string or list of biome ids.
+            let Some(bi) = map.get("biome_is") else {
+                return false;
+            };
+            if let Some(s) = bi.as_str() {
+                return biome_matches(ctx.biome, s);
+            }
+            if let Some(arr) = bi.as_array() {
+                return arr.iter().any(|v| {
+                    v.as_str()
+                        .map(|s| biome_matches(ctx.biome, s))
+                        .unwrap_or(false)
+                });
+            }
+            false
+        }
+        // noise / steep / hole / temperature: fail closed until implemented.
+        "noise_threshold" | "steep" | "hole" | "temperature" => false,
         _ => false,
     }
 }
 
+fn biome_matches(actual: &str, wanted: &str) -> bool {
+    let a = if actual.contains(':') {
+        actual
+    } else {
+        return actual == wanted || format!("minecraft:{actual}") == wanted;
+    };
+    let w = if wanted.contains(':') {
+        wanted.to_owned()
+    } else {
+        format!("minecraft:{wanted}")
+    };
+    a == w
+}
+
 fn eval_vertical_gradient(
     map: &serde_json::Map<String, Value>,
-    ctx: &SurfaceCtx,
+    ctx: &SurfaceCtx<'_>,
 ) -> bool {
     let true_at = resolve_y_anchor(map.get("true_at_and_below").unwrap_or(&Value::Null), ctx.min_y)
         .unwrap_or(ctx.min_y);
@@ -205,10 +238,42 @@ mod tests {
             sea_level: 63,
             surface_y: 64,
             seed: 1,
+            biome: "minecraft:plains",
         };
         assert_eq!(eval_rule(&rule, &ctx), Some(BlockState::bedrock()));
         let above = SurfaceCtx { y: -59, ..ctx };
         // At false_at (min_y+5) must not be bedrock from this rule alone.
         assert_eq!(eval_rule(&rule, &above), None);
+    }
+
+    #[test]
+    fn biome_condition_matches() {
+        let rule = json!({
+            "type": "minecraft:condition",
+            "if_true": {
+                "type": "minecraft:biome",
+                "biome_is": ["minecraft:desert", "minecraft:badlands"]
+            },
+            "then_run": {
+                "type": "minecraft:block",
+                "result_state": { "Name": "minecraft:sand" }
+            }
+        });
+        let desert = SurfaceCtx {
+            x: 0,
+            y: 70,
+            z: 0,
+            min_y: -64,
+            sea_level: 63,
+            surface_y: 70,
+            seed: 1,
+            biome: "minecraft:desert",
+        };
+        assert_eq!(eval_rule(&rule, &desert), Some(BlockState::new("minecraft:sand")));
+        let plains = SurfaceCtx {
+            biome: "minecraft:plains",
+            ..desert
+        };
+        assert_eq!(eval_rule(&rule, &plains), None);
     }
 }

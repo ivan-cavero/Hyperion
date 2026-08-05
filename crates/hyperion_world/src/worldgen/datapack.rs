@@ -143,10 +143,17 @@ mod tests {
             return;
         }
         let (settings, mut lib) = load_overworld_from_jar(&jar, 1).expect("load");
+        assert!(settings.has_climate_router(), "overworld should expose climate axes");
         // Small fill of chunk 0,0 — may not match official yet (noise tables WIP)
         // but must complete without error.
         let col = generate_column_from_density(1, 0, 0, &settings, &mut lib).expect("fill");
         assert_eq!(col.sections.len(), 24);
+        assert!(
+            col.sections[0].biome.starts_with("minecraft:"),
+            "biome={}",
+            col.sections[0].biome
+        );
+        eprintln!("overworld chunk biome={}", col.sections[0].biome);
         // Network encode must succeed.
         let payload = col.encode_network_payload(true).expect("network");
         assert!(payload.len() > 50_000);

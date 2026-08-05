@@ -110,6 +110,15 @@ impl NoiseSettings {
             .ok_or_else(|| "noise_router missing final_density".to_owned())?;
         lib.resolve(fd)
     }
+
+    /// Whether the router exposes climate axes (overworld multi-noise).
+    pub fn has_climate_router(&self) -> bool {
+        self.noise_router.get("temperature").is_some()
+            && (self.noise_router.get("vegetation").is_some()
+                || self.noise_router.get("humidity").is_some())
+            && (self.noise_router.get("continents").is_some()
+                || self.noise_router.get("continentalness").is_some())
+    }
 }
 
 fn block_name(v: Option<&Value>) -> Option<String> {

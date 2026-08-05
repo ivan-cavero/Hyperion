@@ -19,29 +19,32 @@ const DEEPSLATE_Y: i32 = 0;
 ///
 /// `seed` drives the bedrock vertical_gradient (JE `minecraft:bedrock_floor`).
 /// Optional datapack `surface_rule` is evaluated for known nodes (fail-closed).
+/// `biome` is the multi-noise pick for this column (e.g. `minecraft:plains`).
 pub fn apply_basic_surface(
     column: &mut ChunkColumn,
     sea_level: i32,
     min_y: i32,
     seed: i64,
     surface_rule: Option<&serde_json::Value>,
+    biome: &str,
 ) {
     apply_bedrock_floor(column, min_y, seed);
     apply_deepslate_band(column, min_y);
-    apply_surface_layers(column, sea_level);
+    apply_surface_layers(column, sea_level, biome);
     if let Some(rule) = surface_rule {
-        apply_json_surface_pass(column, sea_level, min_y, seed, rule);
+        apply_json_surface_pass(column, sea_level, min_y, seed, rule, biome);
     }
     recompute_heightmap(column);
 }
 
-/// Second pass: try datapack surface_rule on solid cells (bedrock / simple leaves).
+/// Second pass: try datapack surface_rule on solid cells.
 fn apply_json_surface_pass(
     column: &mut ChunkColumn,
     sea_level: i32,
     min_y: i32,
     seed: i64,
     rule: &serde_json::Value,
+    biome: &str,
 ) {
     use crate::worldgen::surface_rule_json::{SurfaceCtx, eval_rule};
 
@@ -72,11 +75,27 @@ fn apply_json_surface_pass(
                     sea_level,
                     surface_y,
                     seed,
+                    biome,
                 };
                 if let Some(placed) = eval_rule(rule, &ctx) {
-                    // Only override with bedrock from JSON for now (avoid wiping grass
-                    // until biome conditions work). Full rule tree later.
-                    if placed == BlockState::bedrock() {
+                    // Allow common surface materials from the JSON tree.
+                    let name = placed.name.as_str();
+                    if matches!(
+                        name,
+                        "minecraft:bedrock"
+                            | "minecraft:grass_block"
+                            | "minecraft:dirt"
+                            | "minecraft:coarse_dirt"
+                            | "minecraft:podzol"
+                            | "minecraft:sand"
+                            | "minecraft:red_sand"
+                            | "minecraft:gravel"
+                            | "minecraft:stone"
+                            | "minecraft:deepslate"
+                            | "minecraft:mycelium"
+                            | "minecraft:snow_block"
+                            | "minecraft:powder_snow"
+                    ) {
                         column.set_block(wx, y, wz, placed);
                     }
                 }
@@ -140,9 +159,15 @@ fn apply_deepslate_band(column: &mut ChunkColumn, min_y: i32) {
     }
 }
 
-fn apply_surface_layers(column: &mut ChunkColumn, sea_level: i32) {
+fn apply_surface_layers(column: &mut ChunkColumn, sea_level: i32, biome: &str) {
     let min_block = i32::from(MIN_SECTION_Y) * 16;
     let max_block = (i32::from(crate::chunk::MAX_SECTION_Y) + 1) * 16 - 1;
+    let desertish = biome.contains("desert") || biome.contains("badlands");
+    let snowy = biome.contains("snowy") || biome.contains("frozen") || biome.contains("ice_spikes");
+    let beach = biome.contains("beach") || biome.contains("stony_shore");
+    let ocean = biome.contains("ocean") || biome.contains("river");
+    let mushroom = biome.contains("mushroom");
+
     for z in 0..16 {
         for x in 0..16 {
             let wx = column.x * 16 + x;
@@ -159,9 +184,17 @@ fn apply_surface_layers(column: &mut ChunkColumn, sea_level: i32) {
             let Some(surface_y) = top else {
                 continue;
             };
-            // Underwater: dirt top; above sea: grass.
             if surface_y >= sea_level - 1 {
-                column.set_block(wx, surface_y, wz, BlockState::grass_block());
+                let top_block = if desertish || beach {
+                    BlockState::new("minecraft:sand")
+                } else if mushroom {
+                    BlockState::new("minecraft:mycelium")
+                } else if snowy {
+                    BlockState::new("minecraft:snow_block")
+                } else {
+                    BlockState::grass_block()
+                };
+                column.set_block(wx, surface_y, wz, top_block);
                 for d in 1..=3 {
                     let y = surface_y - d;
                     if y <= min_block {
@@ -175,11 +208,22 @@ fn apply_surface_layers(column: &mut ChunkColumn, sea_level: i32) {
                         || b == BlockState::dirt()
                         || b == BlockState::deepslate()
                     {
-                        column.set_block(wx, y, wz, BlockState::dirt());
+                        let under = if desertish || beach {
+                            BlockState::new("minecraft:sand")
+                        } else {
+                            BlockState::dirt()
+                        };
+                        column.set_block(wx, y, wz, under);
                     }
                 }
             } else {
-                column.set_block(wx, surface_y, wz, BlockState::dirt());
+                // Seafloor / riverbed
+                let top_block = if ocean || beach {
+                    BlockState::new("minecraft:gravel")
+                } else {
+                    BlockState::dirt()
+                };
+                column.set_block(wx, surface_y, wz, top_block);
                 for d in 1..=2 {
                     let y = surface_y - d;
                     if y <= min_block {

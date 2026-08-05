@@ -15,12 +15,13 @@ use crate::chunk::{
     section_index,
 };
 use crate::level_dat::DEFAULT_DATA_VERSION;
+use crate::worldgen::climate::ClimateSampler;
 use crate::worldgen::density::{DensityContext, DensityFunction, DensityLibrary};
 use crate::worldgen::noise_settings::NoiseSettings;
 use crate::worldgen::surface_rules::apply_basic_surface;
 
 /// Generates one column by sampling `final_density` on the noise cell grid,
-/// then a basic surface pass (bedrock + grass/dirt).
+/// multi-noise biome (when router has climate axes), then surface pass.
 ///
 /// Not full official parity until golden dumps match (noise tables + full
 /// surface_rule tree + aquifers).
@@ -32,12 +33,34 @@ pub fn generate_column_from_density(
     lib: &mut DensityLibrary,
 ) -> Result<ChunkColumn, String> {
     let mut column = generate_column_density_only(seed, chunk_x, chunk_z, settings, lib)?;
+
+    // Biome at chunk center surface band (quart-aligned block coords).
+    let biome = if settings.has_climate_router() {
+        match ClimateSampler::from_settings(settings, lib) {
+            Ok(sampler) => {
+                let bx = chunk_x * 16 + 8;
+                let bz = chunk_z * 16 + 8;
+                let by = settings.sea_level;
+                sampler
+                    .biome_at(bx, by, bz, lib)
+                    .unwrap_or_else(|_| PLAINS_BIOME.to_owned())
+            }
+            Err(_) => PLAINS_BIOME.to_owned(),
+        }
+    } else {
+        PLAINS_BIOME.to_owned()
+    };
+    for section in &mut column.sections {
+        section.biome = biome.clone();
+    }
+
     apply_basic_surface(
         &mut column,
         settings.sea_level,
         settings.noise.min_y,
         seed,
         settings.surface_rule.as_ref(),
+        &biome,
     );
     Ok(column)
 }

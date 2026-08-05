@@ -12,6 +12,7 @@
 
 pub mod blended_noise;
 pub mod chunk_fill;
+pub mod climate;
 pub mod datapack;
 pub mod density;
 pub mod engine;
