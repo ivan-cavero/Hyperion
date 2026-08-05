@@ -235,9 +235,8 @@ fn tree_attempts(biome: &str) -> i32 {
         6
     } else if biome.contains("swamp") {
         3
-    } else if biome.contains("plains") || biome.contains("meadow") || biome.contains("savanna") {
-        2
     } else {
+        // plains, meadow, savanna, and default land
         2
     }
 }
