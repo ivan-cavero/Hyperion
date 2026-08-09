@@ -34,7 +34,7 @@ rsa = "0.9"                                           # RSA handshake (RustCrypt
 rand = "0.8"                                          # RNG — pinned by rsa 0.9 (awaits rsa 0.10 for rand 0.10)
 serde = { version = "1", features = ["derive"] }      # extracted data
 serde_json = "1"
-zip = { version = "2", default-features = false, features = ["deflate"] } # mc-ref jar read (tools only)
+zip = { version = "8", default-features = false, features = ["deflate"] } # mc-ref jar read (tools only)
 uuid = { version = "1", features = ["v4"] }
 thiserror = "2"
 tracing = "0.1"
